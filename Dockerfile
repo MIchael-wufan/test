@@ -1,20 +1,20 @@
 # syntax=docker/dockerfile:1
 FROM ubuntu:22.04
 
-# Avoid interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Shanghai
 
-# Install TeX Live (full) + ImageMagick + poppler + Node.js
+# Install minimal LaTeX (xlop + longdivision only need basic + extra) + tools + Node.js
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # LaTeX
-    texlive-full \
+    # Minimal LaTeX — covers xlop and longdivision packages
+    texlive-latex-base \
     texlive-latex-extra \
-    # PDF → PNG conversion
-    imagemagick \
+    texlive-latex-recommended \
+    texlive-fonts-recommended \
+    # PDF → PNG
     poppler-utils \
     ghostscript \
-    # Node.js runtime
+    # Node.js
     curl \
     ca-certificates \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
@@ -22,20 +22,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Fix ImageMagick PDF policy (allow PDF read)
-RUN sed -i 's/rights="none" pattern="PDF"/rights="read|write" pattern="PDF"/' \
-    /etc/ImageMagick-6/policy.xml || true
+# Install xlop and longdivision via tlmgr
+RUN tlmgr init-usertree && tlmgr install xlop longdivision || true
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files and install dependencies
 COPY package.json tsconfig.json ./
 RUN npm install
 
-# Copy source and build
 COPY src/ ./src/
 RUN npm run build
 
-# Default: run MCP server via stdio
 CMD ["node", "dist/index.js"]
