@@ -58,7 +58,7 @@ const REPO_OWNER = process.env.GITHUB_IMAGE_REPO_OWNER || "MIchael-wufan";
 const REPO_NAME = process.env.GITHUB_IMAGE_REPO || "test";
 // ─── LaTeX Templates ──────────────────────────────────────────────────────────
 function latexXlop(cmd, a, b) {
-    return `\\documentclass[border=0pt]{standalone}
+    return `\\documentclass[border=6pt]{standalone}
 \\usepackage{xlop}
 \\opset{decimalsepsymbol={.}}
 \\begin{document}
@@ -67,7 +67,7 @@ function latexXlop(cmd, a, b) {
 `;
 }
 function latexDivision(dividend, divisor) {
-    return `\\documentclass[border=0pt]{standalone}
+    return `\\documentclass[border=6pt]{standalone}
 \\usepackage{longdivision}
 \\begin{document}
 \\longdivision{${dividend}}{${divisor}}
@@ -75,7 +75,7 @@ function latexDivision(dividend, divisor) {
 `;
 }
 function latexIntDivision(dividend, divisor) {
-    return `\\documentclass[border=0pt]{standalone}
+    return `\\documentclass[border=6pt]{standalone}
 \\usepackage{longdivision}
 \\begin{document}
 \\intlongdivision{${dividend}}{${divisor}}
