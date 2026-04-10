@@ -197,28 +197,28 @@ async function uploadImageToGitHub(pngPath, filename) {
     });
 }
 /**
- * Upload via GitHub's undocumented but stable asset upload used by Issues.
- * POST https://api.github.com/repos/{owner}/{repo}/issues/assets
+ * Upload image by committing it to the GitHub repo.
+ * Returns a raw.githubusercontent.com URL.
  */
 async function uploadViaGitHubAssets(imageBuffer, filename) {
     return new Promise((resolve, reject) => {
-        const boundary = "----VertCalcBoundary" + Date.now().toString(36);
-        const CRLF = "\r\n";
-        const headerPart = Buffer.from(`--${boundary}${CRLF}` +
-            `Content-Disposition: form-data; name="file"; filename="${filename}"${CRLF}` +
-            `Content-Type: image/png${CRLF}${CRLF}`);
-        const footerPart = Buffer.from(`${CRLF}--${boundary}--${CRLF}`);
-        const body = Buffer.concat([headerPart, imageBuffer, footerPart]);
+        const filepath = `images/${filename}`;
+        const contentB64 = imageBuffer.toString("base64");
+        const payload = JSON.stringify({
+            message: `upload ${filename}`,
+            content: contentB64,
+            branch: "main",
+        });
         const options = {
             hostname: "api.github.com",
-            path: `/repos/${GITHUB_IMAGE_REPO_OWNER}/${GITHUB_IMAGE_REPO}/issues/assets`,
-            method: "POST",
+            path: `/repos/${GITHUB_IMAGE_REPO_OWNER}/${GITHUB_IMAGE_REPO}/contents/${filepath}`,
+            method: "PUT",
             headers: {
                 "Authorization": `Bearer ${GITHUB_TOKEN}`,
                 "Accept": "application/vnd.github+json",
-                "Content-Type": `multipart/form-data; boundary=${boundary}`,
-                "Content-Length": body.length,
-                "User-Agent": "vertical-calc-mcp/1.0",
+                "Content-Type": "application/json",
+                "Content-Length": Buffer.byteLength(payload),
+                "User-Agent": "vertical-calc-mcp/2.0",
                 "X-GitHub-Api-Version": "2022-11-28",
             },
         };
@@ -228,21 +228,11 @@ async function uploadViaGitHubAssets(imageBuffer, filename) {
             res.on("end", () => {
                 try {
                     const json = JSON.parse(data);
-                    // Response: { "upload_url": "...", "markdown": "![filename](url)" }
-                    if (json.url || json.upload_url) {
-                        resolve(json.url || json.upload_url);
-                    }
-                    else if (json.markdown) {
-                        // Extract URL from markdown: ![name](url)
-                        const match = json.markdown.match(/\(([^)]+)\)/);
-                        if (match)
-                            resolve(match[1]);
-                        else
-                            reject(new Error(`Cannot parse URL from: ${json.markdown}`));
-                    }
-                    else {
+                    const url = json?.content?.download_url;
+                    if (url)
+                        resolve(url);
+                    else
                         reject(new Error(`Upload failed (${res.statusCode}): ${data.slice(0, 200)}`));
-                    }
                 }
                 catch (e) {
                     reject(new Error(`Parse error (${res.statusCode}): ${data.slice(0, 200)}`));
@@ -250,7 +240,7 @@ async function uploadViaGitHubAssets(imageBuffer, filename) {
             });
         });
         req.on("error", reject);
-        req.write(body);
+        req.write(payload);
         req.end();
     });
 }
