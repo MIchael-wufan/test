@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * Vertical Calculation MCP Server v3.0
+ * Vertical Calculation MCP Server v4.0
  *
  * Tools:
- *   - render_expression  自动识别 +/-/×/÷ 渲染竖式，返回图片 URL
- *
- * LaTeX packages:
- *   - xlop  (加减乘: \opadd \opsub \opmul)
- *   - longdivision (除: \longdivision)
+ *   - render_addition         加法竖式 \opadd
+ *   - render_subtraction      减法竖式 \opsub
+ *   - render_multiplication   乘法竖式 \opmul
+ *   - render_division         小数除法 \longdivision
+ *   - render_integer_division 整数除法（带余数）\intlongdivision
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -28,7 +28,7 @@ const REPO_NAME    = process.env.GITHUB_IMAGE_REPO || "test";
 // ─── LaTeX Templates ──────────────────────────────────────────────────────────
 
 function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string): string {
-  return `\\documentclass[border=10pt]{standalone}
+  return `\\documentclass[border=0pt]{standalone}
 \\usepackage{xlop}
 \\opset{decimalsepsymbol={.}}
 \\begin{document}
@@ -38,7 +38,7 @@ function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string): stri
 }
 
 function latexDivision(dividend: string, divisor: string): string {
-  return `\\documentclass[border=10pt]{standalone}
+  return `\\documentclass[border=0pt]{standalone}
 \\usepackage{longdivision}
 \\begin{document}
 \\longdivision{${dividend}}{${divisor}}
@@ -47,24 +47,12 @@ function latexDivision(dividend: string, divisor: string): string {
 }
 
 function latexIntDivision(dividend: string, divisor: string): string {
-  return `\\documentclass[border=10pt]{standalone}
+  return `\\documentclass[border=0pt]{standalone}
 \\usepackage{longdivision}
 \\begin{document}
 \\intlongdivision{${dividend}}{${divisor}}
 \\end{document}
 `;
-}
-
-// ─── Expression Parser ────────────────────────────────────────────────────────
-
-type Op = "add" | "sub" | "mul" | "div";
-
-function parseExpr(expr: string): { op: Op; a: string; b: string } | null {
-  const s = expr.replace(/\s+/g, "").replace(/×/g, "*").replace(/÷/g, "/");
-  const m = s.match(/^(-?\d+(?:\.\d+)?)([\+\-\*\/])(\d+(?:\.\d+)?)$/);
-  if (!m) return null;
-  const opMap: Record<string, Op> = { "+": "add", "-": "sub", "*": "mul", "/": "div" };
-  return { op: opMap[m[2]], a: m[1], b: m[3] };
 }
 
 // ─── Render Pipeline ──────────────────────────────────────────────────────────
@@ -77,63 +65,73 @@ function renderToPng(latex: string): { pngPath: string; tmpDir: string } {
 
   fs.writeFileSync(texFile, latex, "utf-8");
 
-  const pdflatex = spawnSync("pdflatex", ["-interaction=nonstopmode", "-output-directory", tmpDir, texFile],
+  const compile = spawnSync("pdflatex",
+    ["-interaction=nonstopmode", "-output-directory", tmpDir, texFile],
     { encoding: "utf-8", timeout: 30000 });
 
-  if (pdflatex.status !== 0 || !fs.existsSync(pdfFile)) {
+  if (compile.status !== 0 || !fs.existsSync(pdfFile)) {
     const log = fs.existsSync(path.join(tmpDir, "calc.log"))
       ? fs.readFileSync(path.join(tmpDir, "calc.log"), "utf-8") : "";
     const errs = log.split("\n").filter(l => l.startsWith("!")).slice(0, 5).join("\n");
     throw new Error(`pdflatex failed:\n${errs}`);
   }
 
-  // PDF → PNG via pdftoppm (poppler)
+  // PDF → PNG: transparent background, tight crop via pdftoppm
   const base = pngFile.replace(".png", "");
-  const r = spawnSync("pdftoppm", ["-r", "200", "-png", "-singlefile", pdfFile, base], { timeout: 15000 });
+  const r = spawnSync("pdftoppm",
+    ["-r", "200", "-png", "-singlefile", "-transparent", pdfFile, base],
+    { timeout: 15000 });
   const src = [base + ".png", base + "-1.png"].find(p => fs.existsSync(p));
   if (r.status === 0 && src) {
     fs.renameSync(src, pngFile);
     return { pngPath: pngFile, tmpDir };
   }
 
-  // Fallback: ghostscript
-  const gs = spawnSync("gs", ["-dNOPAUSE", "-dBATCH", "-sDEVICE=pngalpha", "-r200",
-    `-sOutputFile=${pngFile}`, pdfFile], { timeout: 15000 });
+  // Fallback: ghostscript with pngalpha (transparent)
+  const gs = spawnSync("gs",
+    ["-dNOPAUSE", "-dBATCH", "-sDEVICE=pngalpha", "-r200",
+     `-sOutputFile=${pngFile}`, pdfFile],
+    { timeout: 15000 });
   if (gs.status === 0 && fs.existsSync(pngFile)) return { pngPath: pngFile, tmpDir };
 
-  throw new Error("PDF to PNG conversion failed (no pdftoppm or gs)");
+  throw new Error("PDF to PNG conversion failed");
 }
 
 // ─── GitHub Upload ────────────────────────────────────────────────────────────
 
 async function uploadToGitHub(pngPath: string): Promise<string> {
   if (!GITHUB_TOKEN) throw new Error("GITHUB_TOKEN not set");
-
   const filename = `vcalc_${Date.now()}.png`;
-  const filepath = `images/${filename}`;
   const content  = fs.readFileSync(pngPath).toString("base64");
-  const payload  = JSON.stringify({ message: `upload ${filename}`, content, branch: "main" });
+  const payload  = JSON.stringify({
+    message: `upload ${filename}`,
+    content,
+    branch: "main",
+  });
 
   return new Promise((resolve, reject) => {
     const req = https.request({
       hostname: "api.github.com",
-      path: `/repos/${REPO_OWNER}/${REPO_NAME}/contents/${filepath}`,
+      path: `/repos/${REPO_OWNER}/${REPO_NAME}/contents/images/${filename}`,
       method: "PUT",
       headers: {
         "Authorization": `Bearer ${GITHUB_TOKEN}`,
         "Accept": "application/vnd.github+json",
         "Content-Type": "application/json",
         "Content-Length": Buffer.byteLength(payload),
-        "User-Agent": "vertical-calc-mcp/3.0",
+        "User-Agent": "vertical-calc-mcp/4.0",
         "X-GitHub-Api-Version": "2022-11-28",
       },
     }, (res) => {
       let data = "";
       res.on("data", c => data += c);
       res.on("end", () => {
-        const json = JSON.parse(data);
-        const url = json?.content?.download_url;
-        url ? resolve(url) : reject(new Error(`Upload failed (${res.statusCode}): ${data.slice(0, 200)}`));
+        try {
+          const url = JSON.parse(data)?.content?.download_url;
+          url ? resolve(url) : reject(new Error(`Upload failed (${res.statusCode}): ${data.slice(0, 200)}`));
+        } catch (e) {
+          reject(new Error(`Parse error: ${data.slice(0, 200)}`));
+        }
       });
     });
     req.on("error", reject);
@@ -142,101 +140,132 @@ async function uploadToGitHub(pngPath: string): Promise<string> {
   });
 }
 
-// ─── Tool Handler ─────────────────────────────────────────────────────────────
+// ─── Core Handler ─────────────────────────────────────────────────────────────
 
-async function handleExpression(expression: string): Promise<any> {
-  const parsed = parseExpr(expression);
-  if (!parsed) {
-    return { content: [{ type: "text", text: `❌ 无法解析算式: "${expression}"\n支持格式: 123+456, 100-23, 12×3, 144÷12` }] };
-  }
-
-  const { op, a, b } = parsed;
-  const symMap = { add: "+", sub: "-", mul: "×", div: "÷" };
-  const display = `${a} ${symMap[op]} ${b}`;
-
-  let latex: string;
-  if (op === "div") {
-    latex = latexDivision(a, b);
-  } else {
-    const cmdMap = { add: "opadd", sub: "opsub", mul: "opmul" } as const;
-    latex = latexXlop(cmdMap[op], a, b);
-  }
-
-  return renderAndUpload(latex, display);
-}
-
-async function handleIntDivision(dividend: string, divisor: string): Promise<any> {
-  const display = `${dividend} ÷ ${divisor} (整除)`;
-  return renderAndUpload(latexIntDivision(dividend, divisor), display);
-}
-
-async function renderAndUpload(latex: string, display: string): Promise<any> {
+async function render(latex: string, display: string, returnBase64 = false): Promise<any> {
   let tmpDir: string | undefined;
   try {
-    const result = renderToPng(latex);
-    tmpDir = result.tmpDir;
-    const imageUrl = await uploadToGitHub(result.pngPath);
-    return {
-      content: [{
-        type: "text",
-        text: `✅ 竖式渲染成功\n\n表达式: ${display}\n图片链接: ${imageUrl}\n\nHTML:\n<img src="${imageUrl}" alt="${display}" />`,
-      }],
-    };
+    const { pngPath, tmpDir: td } = renderToPng(latex);
+    tmpDir = td;
+
+    if (returnBase64) {
+      const b64 = fs.readFileSync(pngPath).toString("base64");
+      return { content: [{ type: "image", data: b64, mimeType: "image/png" }] };
+    }
+
+    const url = await uploadToGitHub(pngPath);
+    return { content: [{ type: "text", text: url }] };
+
   } catch (err: any) {
-    return {
-      content: [{ type: "text", text: `❌ 渲染失败\n\n表达式: ${display}\n错误: ${err.message}` }],
-    };
+    return { content: [{ type: "text", text: `❌ 渲染失败 [${display}]: ${err.message}` }] };
   } finally {
     if (tmpDir) try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
   }
 }
 
-// ─── MCP Server Setup ─────────────────────────────────────────────────────────
+// ─── MCP Handlers ─────────────────────────────────────────────────────────────
+
+const TOOLS = [
+  {
+    name: "render_addition",
+    description: "渲染加法竖式，返回图片URL。使用 xlop \\opadd，支持小数。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        addend1:    { type: "number", description: "加数1，如 15.2" },
+        addend2:    { type: "number", description: "加数2，如 3.84" },
+        base64:     { type: "boolean", description: "可选，true 则返回 base64 图片而非URL" },
+      },
+      required: ["addend1", "addend2"],
+    },
+  },
+  {
+    name: "render_subtraction",
+    description: "渲染减法竖式，返回图片URL。使用 xlop \\opsub，支持小数。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        minuend:    { type: "number", description: "被减数，如 100.00" },
+        subtrahend: { type: "number", description: "减数，如 23.45" },
+        base64:     { type: "boolean", description: "可选，true 则返回 base64 图片而非URL" },
+      },
+      required: ["minuend", "subtrahend"],
+    },
+  },
+  {
+    name: "render_multiplication",
+    description: "渲染乘法竖式，返回图片URL。使用 xlop \\opmul，支持小数。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        multiplicand: { type: "number", description: "被乘数，如 3.14" },
+        multiplier:   { type: "number", description: "乘数，如 2.5" },
+        base64:       { type: "boolean", description: "可选，true 则返回 base64 图片而非URL" },
+      },
+      required: ["multiplicand", "multiplier"],
+    },
+  },
+  {
+    name: "render_division",
+    description: "渲染小数除法竖式，返回图片URL。使用 longdivision \\longdivision。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dividend: { type: "number", description: "被除数" },
+        divisor:  { type: "number", description: "除数（不能为0）" },
+        base64:   { type: "boolean", description: "可选，true 则返回 base64 图片而非URL" },
+      },
+      required: ["dividend", "divisor"],
+    },
+  },
+  {
+    name: "render_integer_division",
+    description: "渲染整数除法竖式（带余数），返回图片URL。使用 longdivision \\intlongdivision。示例: 107÷12=8余11",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dividend: { type: "integer", description: "被除数（整数）" },
+        divisor:  { type: "integer", description: "除数（整数，不能为0）" },
+        base64:   { type: "boolean", description: "可选，true 则返回 base64 图片而非URL" },
+      },
+      required: ["dividend", "divisor"],
+    },
+  },
+];
 
 function setupHandlers(srv: Server) {
-  srv.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [
-      {
-        name: "render_expression",
-        description: "渲染竖式计算图片，支持加(+)减(-)乘(×/*)小数除(÷/)，返回图片URL。示例: '15.2+3.84', '100-23.45', '3.14×2.5', '144÷12'",
-        inputSchema: {
-          type: "object",
-          properties: {
-            expression: { type: "string", description: "算式字符串，如 '123+456'、'3.14×2.5'、'144÷12'" },
-          },
-          required: ["expression"],
-        },
-      },
-      {
-        name: "render_integer_division",
-        description: "渲染整数除法竖式（带余数），使用 \\intlongdivision，适合整除场景。示例: 107÷12=8余11",
-        inputSchema: {
-          type: "object",
-          properties: {
-            dividend: { type: "integer", description: "被除数（整数）" },
-            divisor:  { type: "integer", description: "除数（整数，不能为0）" },
-          },
-          required: ["dividend", "divisor"],
-        },
-      },
-    ],
-  }));
+  srv.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
-  srv.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params;
-    if (name === "render_expression") {
-      return handleExpression((args as any).expression);
+  srv.setRequestHandler(CallToolRequestSchema, async (req) => {
+    const { name, arguments: a } = req.params;
+    const args = a as any;
+    const b64 = args.base64 === true;
+
+    switch (name) {
+      case "render_addition":
+        return render(latexXlop("opadd", String(args.addend1), String(args.addend2)),
+          `${args.addend1}+${args.addend2}`, b64);
+      case "render_subtraction":
+        return render(latexXlop("opsub", String(args.minuend), String(args.subtrahend)),
+          `${args.minuend}-${args.subtrahend}`, b64);
+      case "render_multiplication":
+        return render(latexXlop("opmul", String(args.multiplicand), String(args.multiplier)),
+          `${args.multiplicand}×${args.multiplier}`, b64);
+      case "render_division":
+        if (args.divisor === 0) return { content: [{ type: "text", text: "❌ 除数不能为 0" }] };
+        return render(latexDivision(String(args.dividend), String(args.divisor)),
+          `${args.dividend}÷${args.divisor}`, b64);
+      case "render_integer_division":
+        if (args.divisor === 0) return { content: [{ type: "text", text: "❌ 除数不能为 0" }] };
+        return render(latexIntDivision(String(args.dividend), String(args.divisor)),
+          `${args.dividend}÷${args.divisor}(整除)`, b64);
+      default:
+        return { content: [{ type: "text", text: `❌ 未知工具: ${name}` }] };
     }
-    if (name === "render_integer_division") {
-      const { dividend, divisor } = args as { dividend: number; divisor: number };
-      if (divisor === 0) return { content: [{ type: "text", text: "❌ 除数不能为 0" }] };
-      return handleIntDivision(String(dividend), String(divisor));
-    }
-    return { content: [{ type: "text", text: `❌ 未知工具: ${name}` }] };
   });
 }
 
-// ─── HTTP Server (SSE + StreamableHTTP) ───────────────────────────────────────
+// ─── HTTP Server ───────────────────────────────────────────────────────────────
 
 async function startHttpServer(port: number) {
   const { SSEServerTransport } = await import("@modelcontextprotocol/sdk/server/sse.js");
@@ -255,13 +284,13 @@ async function startHttpServer(port: number) {
 
     if (url.pathname === "/health") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ status: "ok", version: "3.0.0" }));
+      res.end(JSON.stringify({ status: "ok", version: "4.0.0" }));
 
     } else if (url.pathname === "/sse" && req.method === "GET") {
       const transport = new SSEServerTransport("/message", res);
       sseTransports.set(transport.sessionId, transport);
       res.on("close", () => sseTransports.delete(transport.sessionId));
-      const srv = new Server({ name: "vertical-calc-mcp", version: "3.0.0" }, { capabilities: { tools: {} } });
+      const srv = new Server({ name: "vertical-calc-mcp", version: "4.0.0" }, { capabilities: { tools: {} } });
       setupHandlers(srv);
       await srv.connect(transport);
 
@@ -279,7 +308,7 @@ async function startHttpServer(port: number) {
       req.on("end", async () => {
         try {
           const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-          const srv = new Server({ name: "vertical-calc-mcp", version: "3.0.0" }, { capabilities: { tools: {} } });
+          const srv = new Server({ name: "vertical-calc-mcp", version: "4.0.0" }, { capabilities: { tools: {} } });
           setupHandlers(srv);
           await srv.connect(transport);
           await transport.handleRequest(req, res, body ? JSON.parse(body) : undefined);
@@ -292,7 +321,7 @@ async function startHttpServer(port: number) {
       res.writeHead(404); res.end("Not found");
     }
   }).listen(port, () => {
-    console.error(`Vertical Calc MCP Server v3.0 started (SSE+Streamable) on port ${port}`);
+    console.error(`Vertical Calc MCP Server v4.0 started on port ${port}`);
   });
 }
 
@@ -301,11 +330,10 @@ async function startHttpServer(port: number) {
 async function main() {
   const mode = process.env.TRANSPORT || "stdio";
   const port = parseInt(process.env.PORT || "3000", 10);
-
   if (mode === "sse") {
     await startHttpServer(port);
   } else {
-    const srv = new Server({ name: "vertical-calc-mcp", version: "3.0.0" }, { capabilities: { tools: {} } });
+    const srv = new Server({ name: "vertical-calc-mcp", version: "4.0.0" }, { capabilities: { tools: {} } });
     setupHandlers(srv);
     await srv.connect(new StdioServerTransport());
   }
