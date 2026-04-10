@@ -1,19 +1,44 @@
 {
   "name": "vertical-calc-mcp",
   "version": "1.0.0",
-  "description": "MCP Server for rendering vertical arithmetic calculations using LaTeX xlop/longdivision packages",
+  "description": "MCP Server for rendering vertical arithmetic calculations (竖式计算) using LaTeX xlop/longdivision packages",
   "main": "dist/index.js",
+  "bin": {
+    "vertical-calc-mcp": "dist/index.js"
+  },
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts"
+    "prepublishOnly": "npm run build",
+    "start": "node dist/index.js"
   },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "latex",
+    "math",
+    "vertical-calculation",
+    "竖式计算",
+    "xlop",
+    "longdivision"
+  ],
+  "author": "MIchael-wufan",
+  "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "typescript": "^5.0.0",
-    "ts-node": "^10.0.0"
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MIchael-wufan/test.git"
   }
 }
