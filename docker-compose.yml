@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  vertical-calc-mcp:
+    build: .
+    image: vertical-calc-mcp:latest
+    container_name: vertical-calc-mcp
+    stdin_open: true
+    tty: false
+    restart: unless-stopped
+
+  # 可选：作为 HTTP SSE 服务运行（用 mcp-proxy 包装）
+  # vertical-calc-mcp-http:
+  #   build: .
+  #   command: ["npx", "mcp-proxy", "--port", "3000", "node", "dist/index.js"]
+  #   ports:
+  #     - "3000:3000"
