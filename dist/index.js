@@ -329,124 +329,152 @@ async function handleRender(latex, expression) {
         catch { }
     }
 }
-// ─── MCP Server ───────────────────────────────────────────────────────────────
+// ─── MCP Server (stdio instance) ─────────────────────────────────────────────
 const server = new index_js_1.Server({ name: "vertical-calc-mcp", version: "2.0.0" }, { capabilities: { tools: {} } });
-server.setRequestHandler(types_js_1.ListToolsRequestSchema, async () => ({
-    tools: [
-        {
-            name: "render_addition",
-            description: "渲染加法竖式计算，返回图片 URL 和 HTML img 标签。",
-            inputSchema: {
-                type: "object",
-                properties: {
-                    addend1: { type: "number", description: "第一个加数" },
-                    addend2: { type: "number", description: "第二个加数" },
-                },
-                required: ["addend1", "addend2"],
-            },
-        },
-        {
-            name: "render_subtraction",
-            description: "渲染减法竖式计算，返回图片 URL 和 HTML img 标签。",
-            inputSchema: {
-                type: "object",
-                properties: {
-                    minuend: { type: "number", description: "被减数" },
-                    subtrahend: { type: "number", description: "减数" },
-                },
-                required: ["minuend", "subtrahend"],
-            },
-        },
-        {
-            name: "render_multiplication",
-            description: "渲染乘法竖式计算，返回图片 URL 和 HTML img 标签。",
-            inputSchema: {
-                type: "object",
-                properties: {
-                    multiplicand: { type: "number", description: "被乘数" },
-                    multiplier: { type: "number", description: "乘数" },
-                },
-                required: ["multiplicand", "multiplier"],
-            },
-        },
-        {
-            name: "render_division",
-            description: "渲染除法竖式（长除法），返回图片 URL 和 HTML img 标签。",
-            inputSchema: {
-                type: "object",
-                properties: {
-                    dividend: { type: "number", description: "被除数" },
-                    divisor: { type: "number", description: "除数（不能为 0）" },
-                },
-                required: ["dividend", "divisor"],
-            },
-        },
-        {
-            name: "render_expression",
-            description: "自动识别算式类型并渲染竖式，返回图片 URL 和 HTML img 标签。支持 + - * × / ÷。例如: '123+456', '12×34', '144÷12'",
-            inputSchema: {
-                type: "object",
-                properties: {
-                    expression: {
-                        type: "string",
-                        description: "算式字符串，例如: '123+456', '999-234', '12×34', '144÷12'",
-                    },
-                },
-                required: ["expression"],
-            },
-        },
-    ],
-}));
-server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params;
-    switch (name) {
-        case "render_addition": {
-            const { addend1, addend2 } = args;
-            return handleRender(generateXlopLatex("add", addend1, addend2), `${addend1} + ${addend2}`);
+// ─── SSE HTTP Server ──────────────────────────────────────────────────────────
+async function startSseServer(port) {
+    const { SSEServerTransport } = await Promise.resolve().then(() => __importStar(require("@modelcontextprotocol/sdk/server/sse.js")));
+    const httpModule = await Promise.resolve().then(() => __importStar(require("http")));
+    const transports = new Map();
+    const httpServer = httpModule.default.createServer(async (req, res) => {
+        // CORS headers
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        if (req.method === "OPTIONS") {
+            res.writeHead(204);
+            res.end();
+            return;
         }
-        case "render_subtraction": {
-            const { minuend, subtrahend } = args;
-            return handleRender(generateXlopLatex("sub", minuend, subtrahend), `${minuend} - ${subtrahend}`);
+        const url = new URL(req.url || "/", `http://localhost:${port}`);
+        if (url.pathname === "/sse" && req.method === "GET") {
+            // SSE connection
+            const transport = new SSEServerTransport("/message", res);
+            transports.set(transport.sessionId, transport);
+            res.on("close", () => {
+                transports.delete(transport.sessionId);
+            });
+            const sseServer = new index_js_1.Server({ name: "vertical-calc-mcp", version: "2.0.0" }, { capabilities: { tools: {} } });
+            setupHandlers(sseServer);
+            await sseServer.connect(transport);
         }
-        case "render_multiplication": {
-            const { multiplicand, multiplier } = args;
-            return handleRender(generateXlopLatex("mul", multiplicand, multiplier), `${multiplicand} × ${multiplier}`);
-        }
-        case "render_division": {
-            const { dividend, divisor } = args;
-            if (divisor === 0)
-                return { content: [{ type: "text", text: "❌ 除数不能为 0" }] };
-            return handleRender(generateLongDivisionLatex(dividend, divisor), `${dividend} ÷ ${divisor}`);
-        }
-        case "render_expression": {
-            const { expression } = args;
-            const parsed = parseExpression(expression);
-            if (!parsed) {
-                return {
-                    content: [{ type: "text", text: `❌ 无法解析算式: "${expression}"\n支持: "123+456", "999-234", "12×34", "144÷12"` }],
-                };
+        else if (url.pathname === "/message" && req.method === "POST") {
+            // Message endpoint
+            const sessionId = url.searchParams.get("sessionId") || "";
+            const transport = transports.get(sessionId);
+            if (!transport) {
+                res.writeHead(404, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ error: "Session not found" }));
+                return;
             }
-            let latex;
-            let exprDisplay;
-            if (parsed.operator === "div") {
-                latex = generateLongDivisionLatex(parsed.operand1, parsed.operand2);
-                exprDisplay = `${parsed.operand1} ÷ ${parsed.operand2}`;
-            }
-            else {
-                latex = generateXlopLatex(parsed.operator, parsed.operand1, parsed.operand2);
-                const sym = { add: "+", sub: "-", mul: "×" }[parsed.operator];
-                exprDisplay = `${parsed.operand1} ${sym} ${parsed.operand2}`;
-            }
-            return handleRender(latex, exprDisplay);
+            let body = "";
+            req.on("data", chunk => body += chunk);
+            req.on("end", async () => {
+                await transport.handlePostMessage(req, res, JSON.parse(body));
+            });
         }
-        default:
-            return { content: [{ type: "text", text: `❌ 未知工具: ${name}` }] };
-    }
-});
+        else if (url.pathname === "/health") {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ status: "ok", version: "2.0.0" }));
+        }
+        else {
+            res.writeHead(404);
+            res.end("Not found");
+        }
+    });
+    httpServer.listen(port, () => {
+        console.error(`Vertical Calc MCP Server v2.0 started (SSE) on port ${port}`);
+        console.error(`SSE endpoint: http://localhost:${port}/sse`);
+    });
+}
+// ─── Handler Setup (shared between stdio and SSE) ─────────────────────────────
+function setupHandlers(srv) {
+    srv.setRequestHandler(types_js_1.ListToolsRequestSchema, async () => ({
+        tools: [
+            {
+                name: "render_addition",
+                description: "渲染加法竖式计算，返回图片 URL 和 HTML img 标签。",
+                inputSchema: { type: "object", properties: { addend1: { type: "number", description: "第一个加数" }, addend2: { type: "number", description: "第二个加数" } }, required: ["addend1", "addend2"] },
+            },
+            {
+                name: "render_subtraction",
+                description: "渲染减法竖式计算，返回图片 URL 和 HTML img 标签。",
+                inputSchema: { type: "object", properties: { minuend: { type: "number", description: "被减数" }, subtrahend: { type: "number", description: "减数" } }, required: ["minuend", "subtrahend"] },
+            },
+            {
+                name: "render_multiplication",
+                description: "渲染乘法竖式计算，返回图片 URL 和 HTML img 标签。",
+                inputSchema: { type: "object", properties: { multiplicand: { type: "number", description: "被乘数" }, multiplier: { type: "number", description: "乘数" } }, required: ["multiplicand", "multiplier"] },
+            },
+            {
+                name: "render_division",
+                description: "渲染除法竖式（长除法），返回图片 URL 和 HTML img 标签。",
+                inputSchema: { type: "object", properties: { dividend: { type: "number", description: "被除数" }, divisor: { type: "number", description: "除数（不能为 0）" } }, required: ["dividend", "divisor"] },
+            },
+            {
+                name: "render_expression",
+                description: "自动识别算式类型并渲染竖式，返回图片 URL 和 HTML img 标签。支持 + - * × / ÷。例如: '123+456', '12×34', '144÷12'",
+                inputSchema: { type: "object", properties: { expression: { type: "string", description: "算式字符串，例如: '123+456', '999-234', '12×34', '144÷12'" } }, required: ["expression"] },
+            },
+        ],
+    }));
+    srv.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
+        const { name, arguments: args } = request.params;
+        switch (name) {
+            case "render_addition": {
+                const { addend1, addend2 } = args;
+                return handleRender(generateXlopLatex("add", addend1, addend2), `${addend1} + ${addend2}`);
+            }
+            case "render_subtraction": {
+                const { minuend, subtrahend } = args;
+                return handleRender(generateXlopLatex("sub", minuend, subtrahend), `${minuend} - ${subtrahend}`);
+            }
+            case "render_multiplication": {
+                const { multiplicand, multiplier } = args;
+                return handleRender(generateXlopLatex("mul", multiplicand, multiplier), `${multiplicand} × ${multiplier}`);
+            }
+            case "render_division": {
+                const { dividend, divisor } = args;
+                if (divisor === 0)
+                    return { content: [{ type: "text", text: "❌ 除数不能为 0" }] };
+                return handleRender(generateLongDivisionLatex(dividend, divisor), `${dividend} ÷ ${divisor}`);
+            }
+            case "render_expression": {
+                const { expression } = args;
+                const parsed = parseExpression(expression);
+                if (!parsed)
+                    return { content: [{ type: "text", text: `❌ 无法解析算式: "${expression}"` }] };
+                let latex;
+                let exprDisplay;
+                if (parsed.operator === "div") {
+                    latex = generateLongDivisionLatex(parsed.operand1, parsed.operand2);
+                    exprDisplay = `${parsed.operand1} ÷ ${parsed.operand2}`;
+                }
+                else {
+                    latex = generateXlopLatex(parsed.operator, parsed.operand1, parsed.operand2);
+                    const sym = { add: "+", sub: "-", mul: "×" }[parsed.operator];
+                    exprDisplay = `${parsed.operand1} ${sym} ${parsed.operand2}`;
+                }
+                return handleRender(latex, exprDisplay);
+            }
+            default:
+                return { content: [{ type: "text", text: `❌ 未知工具: ${name}` }] };
+        }
+    });
+}
+// ─── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
-    const transport = new stdio_js_1.StdioServerTransport();
-    await server.connect(transport);
-    console.error("Vertical Calc MCP Server v2.0 started (stdio)");
+    const transport_mode = process.env.TRANSPORT || "stdio";
+    const port = parseInt(process.env.PORT || "3000", 10);
+    if (transport_mode === "sse") {
+        await startSseServer(port);
+    }
+    else {
+        setupHandlers(server);
+        const transport = new stdio_js_1.StdioServerTransport();
+        await server.connect(transport);
+        console.error("Vertical Calc MCP Server v2.0 started (stdio)");
+    }
 }
 main().catch((err) => {
     console.error("Fatal:", err);
