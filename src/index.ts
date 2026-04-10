@@ -46,6 +46,15 @@ function latexDivision(dividend: string, divisor: string): string {
 `;
 }
 
+function latexIntDivision(dividend: string, divisor: string): string {
+  return `\\documentclass[border=10pt]{standalone}
+\\usepackage{longdivision}
+\\begin{document}
+\\intlongdivision{${dividend}}{${divisor}}
+\\end{document}
+`;
+}
+
 // ─── Expression Parser ────────────────────────────────────────────────────────
 
 type Op = "add" | "sub" | "mul" | "div";
@@ -153,6 +162,15 @@ async function handleExpression(expression: string): Promise<any> {
     latex = latexXlop(cmdMap[op], a, b);
   }
 
+  return renderAndUpload(latex, display);
+}
+
+async function handleIntDivision(dividend: string, divisor: string): Promise<any> {
+  const display = `${dividend} ÷ ${divisor} (整除)`;
+  return renderAndUpload(latexIntDivision(dividend, divisor), display);
+}
+
+async function renderAndUpload(latex: string, display: string): Promise<any> {
   let tmpDir: string | undefined;
   try {
     const result = renderToPng(latex);
@@ -177,26 +195,42 @@ async function handleExpression(expression: string): Promise<any> {
 
 function setupHandlers(srv: Server) {
   srv.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [{
-      name: "render_expression",
-      description: "渲染竖式计算图片，支持加(+)减(-)乘(×/*)除(÷/)，返回图片URL。示例: '15.2+3.84', '100-23.45', '3.14×2.5', '144÷12'",
-      inputSchema: {
-        type: "object",
-        properties: {
-          expression: {
-            type: "string",
-            description: "算式字符串，如 '123+456'、'3.14×2.5'、'144÷12'",
+    tools: [
+      {
+        name: "render_expression",
+        description: "渲染竖式计算图片，支持加(+)减(-)乘(×/*)小数除(÷/)，返回图片URL。示例: '15.2+3.84', '100-23.45', '3.14×2.5', '144÷12'",
+        inputSchema: {
+          type: "object",
+          properties: {
+            expression: { type: "string", description: "算式字符串，如 '123+456'、'3.14×2.5'、'144÷12'" },
           },
+          required: ["expression"],
         },
-        required: ["expression"],
       },
-    }],
+      {
+        name: "render_integer_division",
+        description: "渲染整数除法竖式（带余数），使用 \\intlongdivision，适合整除场景。示例: 107÷12=8余11",
+        inputSchema: {
+          type: "object",
+          properties: {
+            dividend: { type: "integer", description: "被除数（整数）" },
+            divisor:  { type: "integer", description: "除数（整数，不能为0）" },
+          },
+          required: ["dividend", "divisor"],
+        },
+      },
+    ],
   }));
 
   srv.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
     if (name === "render_expression") {
       return handleExpression((args as any).expression);
+    }
+    if (name === "render_integer_division") {
+      const { dividend, divisor } = args as { dividend: number; divisor: number };
+      if (divisor === 0) return { content: [{ type: "text", text: "❌ 除数不能为 0" }] };
+      return handleIntDivision(String(dividend), String(divisor));
     }
     return { content: [{ type: "text", text: `❌ 未知工具: ${name}` }] };
   });
