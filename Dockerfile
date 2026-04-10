@@ -31,7 +31,7 @@ WORKDIR /app
 
 # Copy package files and install dependencies
 COPY package.json tsconfig.json ./
-RUN npm install --omit=dev 2>/dev/null || npm install
+RUN npm install
 
 # Copy source and build
 COPY src/ ./src/
