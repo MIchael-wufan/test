@@ -28,7 +28,7 @@ const REPO_NAME    = process.env.GITHUB_IMAGE_REPO || "test";
 // ─── LaTeX Templates ──────────────────────────────────────────────────────────
 
 function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string): string {
-  return `\\documentclass[border=0pt]{standalone}
+  return `\\documentclass[border=6pt]{standalone}
 \\usepackage{xlop}
 \\opset{decimalsepsymbol={.}}
 \\begin{document}
@@ -38,7 +38,7 @@ function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string): stri
 }
 
 function latexDivision(dividend: string, divisor: string): string {
-  return `\\documentclass[border=0pt]{standalone}
+  return `\\documentclass[border=6pt]{standalone}
 \\usepackage{longdivision}
 \\begin{document}
 \\longdivision{${dividend}}{${divisor}}
@@ -47,7 +47,7 @@ function latexDivision(dividend: string, divisor: string): string {
 }
 
 function latexIntDivision(dividend: string, divisor: string): string {
-  return `\\documentclass[border=0pt]{standalone}
+  return `\\documentclass[border=6pt]{standalone}
 \\usepackage{longdivision}
 \\begin{document}
 \\intlongdivision{${dividend}}{${divisor}}
