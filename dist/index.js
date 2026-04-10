@@ -60,22 +60,108 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN || process.env.GITHUB_PERSONAL_ACC
 // Repo used for image hosting via GitHub Issues upload API
 const GITHUB_IMAGE_REPO_OWNER = process.env.GITHUB_IMAGE_REPO_OWNER || "MIchael-wufan";
 const GITHUB_IMAGE_REPO = process.env.GITHUB_IMAGE_REPO || "test";
-// ─── LaTeX Generation ─────────────────────────────────────────────────────────
-function generateXlopLatex(operator, operand1, operand2) {
-    const cmdMap = { add: "opadd", sub: "opsub", mul: "opmul" };
-    const cmd = cmdMap[operator];
-    return `\\documentclass[border=10pt]{standalone}
-\\usepackage{xlop}
+// ─── LaTeX Generation (no external packages — pure tabular) ───────────────────
+/**
+ * 加减法竖式：对齐各位数字，底部画横线，显示结果
+ */
+function generateAddSubLatex(operator, operand1, operand2) {
+    const result = operator === "add" ? operand1 + operand2 : operand1 - operand2;
+    const sign = operator === "add" ? "+" : "-";
+    // 对齐到最大位数
+    const s1 = String(Math.abs(operand1));
+    const s2 = String(Math.abs(operand2));
+    const sr = String(Math.abs(result));
+    const width = Math.max(s1.length, s2.length, sr.length) + 1;
+    const pad = (s) => s.padStart(width);
+    return `\\documentclass[border=8pt]{standalone}
+\\usepackage{array}
 \\begin{document}
-\\${cmd}[style=text]{${operand1}}{${operand2}}
+\\ttfamily
+\\begin{tabular}{r}
+${pad(s1)} \\\\
+${sign}${pad(s2).slice(1)} \\\\
+\\hline
+${pad(sr)} \\\\
+\\end{tabular}
 \\end{document}
 `;
 }
-function generateLongDivisionLatex(dividend, divisor) {
-    return `\\documentclass[border=10pt]{standalone}
-\\usepackage{longdivision}
+/**
+ * 乘法竖式：被乘数 × 乘数，逐位相乘后求和
+ */
+function generateMulLatex(multiplicand, multiplier) {
+    const result = multiplicand * multiplier;
+    const s1 = String(Math.abs(multiplicand));
+    const s2 = String(Math.abs(multiplier));
+    const sr = String(Math.abs(result));
+    // 计算每一位乘积的部分积
+    const digits2 = String(Math.abs(multiplier)).split("").reverse();
+    const partials = [];
+    for (let i = 0; i < digits2.length; i++) {
+        const partial = Math.abs(multiplicand) * parseInt(digits2[i]);
+        partials.push(String(partial) + "0".repeat(i));
+    }
+    const width = Math.max(s1.length, s2.length, sr.length, ...partials.map(p => p.length)) + 1;
+    const pad = (s) => s.padStart(width);
+    let rows = `${pad(s1)} \\\\\n×${pad(s2).slice(1)} \\\\\n\\hline\n`;
+    if (partials.length > 1) {
+        rows += partials.map(p => pad(p) + " \\\\").join("\n") + "\n\\hline\n";
+    }
+    rows += `${pad(sr)} \\\\\n`;
+    return `\\documentclass[border=8pt]{standalone}
+\\usepackage{array}
 \\begin{document}
-\\longdivision{${dividend}}{${divisor}}
+\\ttfamily
+\\begin{tabular}{r}
+${rows}\\end{tabular}
+\\end{document}
+`;
+}
+/**
+ * 除法竖式：dividend ÷ divisor = quotient ... remainder
+ * 格式：商在上，被除数在中，逐步相减展示
+ */
+function generateDivLatex(dividend, divisor) {
+    if (divisor === 0)
+        throw new Error("除数不能为0");
+    const quotient = Math.floor(Math.abs(dividend) / Math.abs(divisor));
+    const remainder = Math.abs(dividend) % Math.abs(divisor);
+    const sDividend = String(Math.abs(dividend));
+    const sDivisor = String(Math.abs(divisor));
+    const sQuotient = String(quotient);
+    // 逐步长除法步骤
+    const steps = [];
+    let current = 0;
+    let qDigits = "";
+    for (let i = 0; i < sDividend.length; i++) {
+        current = current * 10 + parseInt(sDividend[i]);
+        const q = Math.floor(current / Math.abs(divisor));
+        const sub = q * Math.abs(divisor);
+        const rem = current - sub;
+        steps.push({ sub: String(sub), rem: String(rem) });
+        current = rem;
+        qDigits += String(q);
+    }
+    // 构造简洁的竖式展示
+    const width = Math.max(sDividend.length, sDivisor.length + sQuotient.length + 3) + 2;
+    let body = `${sDivisor} ) ${sDividend.padStart(width - sDivisor.length - 3)}\n`;
+    body += " ".repeat(sDivisor.length + 2) + sQuotient.padStart(width - sDivisor.length - 2) + "\n";
+    body += "-".repeat(width) + "\n";
+    if (remainder > 0) {
+        body += " ".repeat(sDivisor.length + 2) + String(remainder).padStart(width - sDivisor.length - 2) + "\n";
+    }
+    return `\\documentclass[border=8pt]{standalone}
+\\usepackage{array}
+\\begin{document}
+\\ttfamily
+\\begin{tabular}{l}
+\\multicolumn{1}{r}{${sQuotient}} \\\\[-2pt]
+\\cline{1-1}
+${sDivisor} $)$ ${sDividend} \\\\
+\\multicolumn{1}{r}{$-$ ${String(Math.floor(dividend / divisor) * divisor)}} \\\\[-2pt]
+\\cline{1-1}
+\\multicolumn{1}{r}{${remainder}} \\\\
+\\end{tabular}
 \\end{document}
 `;
 }
@@ -457,21 +543,21 @@ function setupHandlers(srv) {
         switch (name) {
             case "render_addition": {
                 const { addend1, addend2 } = args;
-                return handleRender(generateXlopLatex("add", addend1, addend2), `${addend1} + ${addend2}`);
+                return handleRender(generateAddSubLatex("add", addend1, addend2), `${addend1} + ${addend2}`);
             }
             case "render_subtraction": {
                 const { minuend, subtrahend } = args;
-                return handleRender(generateXlopLatex("sub", minuend, subtrahend), `${minuend} - ${subtrahend}`);
+                return handleRender(generateAddSubLatex("sub", minuend, subtrahend), `${minuend} - ${subtrahend}`);
             }
             case "render_multiplication": {
                 const { multiplicand, multiplier } = args;
-                return handleRender(generateXlopLatex("mul", multiplicand, multiplier), `${multiplicand} × ${multiplier}`);
+                return handleRender(generateMulLatex(multiplicand, multiplier), `${multiplicand} × ${multiplier}`);
             }
             case "render_division": {
                 const { dividend, divisor } = args;
                 if (divisor === 0)
                     return { content: [{ type: "text", text: "❌ 除数不能为 0" }] };
-                return handleRender(generateLongDivisionLatex(dividend, divisor), `${dividend} ÷ ${divisor}`);
+                return handleRender(generateDivLatex(dividend, divisor), `${dividend} ÷ ${divisor}`);
             }
             case "render_expression": {
                 const { expression } = args;
@@ -481,12 +567,16 @@ function setupHandlers(srv) {
                 let latex;
                 let exprDisplay;
                 if (parsed.operator === "div") {
-                    latex = generateLongDivisionLatex(parsed.operand1, parsed.operand2);
+                    latex = generateDivLatex(parsed.operand1, parsed.operand2);
                     exprDisplay = `${parsed.operand1} ÷ ${parsed.operand2}`;
                 }
+                else if (parsed.operator === "mul") {
+                    latex = generateMulLatex(parsed.operand1, parsed.operand2);
+                    exprDisplay = `${parsed.operand1} × ${parsed.operand2}`;
+                }
                 else {
-                    latex = generateXlopLatex(parsed.operator, parsed.operand1, parsed.operand2);
-                    const sym = { add: "+", sub: "-", mul: "×" }[parsed.operator];
+                    latex = generateAddSubLatex(parsed.operator, parsed.operand1, parsed.operand2);
+                    const sym = { add: "+", sub: "-" }[parsed.operator];
                     exprDisplay = `${parsed.operand1} ${sym} ${parsed.operand2}`;
                 }
                 return handleRender(latex, exprDisplay);
