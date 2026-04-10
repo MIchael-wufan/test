@@ -373,6 +373,40 @@ async function startSseServer(port) {
                 await transport.handlePostMessage(req, res, JSON.parse(body));
             });
         }
+        else if (url.pathname === "/mcp" && req.method === "POST") {
+            // StreamableHTTP endpoint — stateless, one request = one MCP session
+            let body = "";
+            req.on("data", chunk => body += chunk);
+            req.on("end", async () => {
+                try {
+                    const { StreamableHTTPServerTransport } = await Promise.resolve().then(() => __importStar(require("@modelcontextprotocol/sdk/server/streamableHttp.js")));
+                    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+                    const mcpServer = new index_js_1.Server({ name: "vertical-calc-mcp", version: "2.0.0" }, { capabilities: { tools: {} } });
+                    setupHandlers(mcpServer);
+                    await mcpServer.connect(transport);
+                    await transport.handleRequest(req, res, JSON.parse(body));
+                }
+                catch (e) {
+                    res.writeHead(500, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ error: e.message }));
+                }
+            });
+        }
+        else if (url.pathname === "/mcp" && req.method === "GET") {
+            // StreamableHTTP SSE stream (for servers that support it)
+            try {
+                const { StreamableHTTPServerTransport } = await Promise.resolve().then(() => __importStar(require("@modelcontextprotocol/sdk/server/streamableHttp.js")));
+                const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+                const mcpServer = new index_js_1.Server({ name: "vertical-calc-mcp", version: "2.0.0" }, { capabilities: { tools: {} } });
+                setupHandlers(mcpServer);
+                await mcpServer.connect(transport);
+                await transport.handleRequest(req, res);
+            }
+            catch (e) {
+                res.writeHead(500, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ error: e.message }));
+            }
+        }
         else if (url.pathname === "/health") {
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ status: "ok", version: "2.0.0" }));
