@@ -196,9 +196,14 @@ function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: s
     }
   }
 
-  // 计算总尺寸
+  // 计算总尺寸：取竖式宽度和首行文字估算宽度的最大值
   const svgWidths = blocks.filter(b => b.type === "svg").map(b => (b as any).info.width as number);
-  const maxWidth = svgWidths.length > 0 ? Math.max(...svgWidths) : 200;
+  const labelWidths = blocks.filter(b => b.type === "label").map(b => {
+    // 每个字符约 8pt 估算
+    return (b as any).text.length * 8;
+  });
+  const allWidths = [...svgWidths, ...labelWidths];
+  const maxWidth = allWidths.length > 0 ? Math.max(...allWidths) : 200;
 
   let totalHeight = 0;
   for (const b of blocks) {
