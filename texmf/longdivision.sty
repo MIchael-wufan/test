@@ -887,21 +887,19 @@
 \l__longdiv_rulethickness_dim = 0.2mm
 
 % Make a rule of length the width of token list #1 whose right endpoint is \g__longdiv_temp_dim from the left.
-% Modified: extend rule to full dividend width (Chinese/standard convention)
+% Modified: right endpoint fixed to full dividend width (Chinese/standard convention)
 \newdimen \l__longdiv_dividendwidth_dim
 \cs_new:Nn \longdiv_rule:N {
     \noalign {
         \settowidth \l__longdiv_tempwidth_dim { \tl_use:N #1 }
-        \settowidth \l__longdiv_dividendwidth_dim { \tl_use:N \l__longdiv_dividend_tl }
-        % Use whichever is wider: the current line or the full dividend
-        \dim_compare:nNnTF { \l__longdiv_dividendwidth_dim } > { \l__longdiv_tempwidth_dim } {
-            \box_move_right:nn { \g__longdiv_temp_dim - \l__longdiv_dividendwidth_dim } {
-                \vbox:n { \hrule width \l__longdiv_dividendwidth_dim height \l__longdiv_rulethickness_dim }
-            }
-        }{
-            \box_move_right:nn { \g__longdiv_temp_dim - \l__longdiv_tempwidth_dim } {
-                \vbox:n { \hrule width \l__longdiv_tempwidth_dim height \l__longdiv_rulethickness_dim }
-            }
+        % Measure full dividend width as the fixed right endpoint
+        \settowidth \l__longdiv_dividendwidth_dim {
+            \tl_range:Nnn \l__longdiv_dividend_tl { 1 } { \tl_count:N \l__longdiv_dividend_tl } \relax
+        }
+        % Right end = dividendwidth, left end = dividendwidth - max(linewidth, dividendwidth)
+        % Since dividendwidth >= linewidth, rule always spans full dividend width
+        \box_move_right:nn { 0pt } {
+            \vbox:n { \hrule width \l__longdiv_dividendwidth_dim height \l__longdiv_rulethickness_dim }
         }
     }
 }
