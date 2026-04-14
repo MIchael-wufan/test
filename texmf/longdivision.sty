@@ -624,8 +624,8 @@
         \cs_gset:Nn \longdiv_decimal_separator_marker: { \longdiv_decimal_separator: } % If true print the separators
         \cs_gset:Nn \longdiv_digit_separator_marker: { \longdiv_digit_separator: }
     }{
-        \cs_gset:Nn \longdiv_decimal_separator_marker: {} % Else use nothing (no phantom, no gap)
-        \cs_gset:Nn \longdiv_digit_separator_marker: {}
+        \cs_gset:Nn \longdiv_decimal_separator_marker: {{ \longdiv_hphantom:n { \longdiv_decimal_separator: } }} % Else use \phantom
+        \cs_gset:Nn \longdiv_digit_separator_marker: {{  \longdiv_hphantom:n { \longdiv_digit_separator: } }}
     }
     \cs_gset:Nn \longdiv_repeat_marker: { \longdiv_indicate_repeating_decimal_skip_begin: } % Leave a space (if we are in parentheses case) if we see the repeat_marker.
     \longdiv_typeset_work:n { \tl_use:N \l__longdiv_remainder_tl }
