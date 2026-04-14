@@ -27,10 +27,11 @@ const REPO_NAME    = process.env.GITHUB_IMAGE_REPO || "test";
 
 // ─── LaTeX Templates ──────────────────────────────────────────────────────────
 
-function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string): string {
+function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string, extraOpset = ""): string {
+  const opsetBase = `decimalsepsymbol={.}${extraOpset ? "," + extraOpset : ""}`;
   return `\\documentclass[border=10pt]{standalone}
 \\usepackage{xlop}
-\\opset{decimalsepsymbol={.}}
+\\opset{${opsetBase}}
 \\begin{document}
 \\${cmd}{${a}}{${b}}
 \\end{document}
@@ -246,7 +247,7 @@ function setupHandlers(srv: Server) {
         return render(latexXlop("opadd", String(args.addend1), String(args.addend2)),
           `${args.addend1}+${args.addend2}`, b64);
       case "render_subtraction":
-        return render(latexXlop("opsub", String(args.minuend), String(args.subtrahend)),
+        return render(latexXlop("opsub", String(args.minuend), String(args.subtrahend), "voperator=bottom"),
           `${args.minuend}-${args.subtrahend}`, b64);
       case "render_multiplication":
         return render(latexXlop("opmul", String(args.multiplicand), String(args.multiplier)),
