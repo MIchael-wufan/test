@@ -501,9 +501,9 @@ function setupHandlers(srv: Server) {
           const truncResult = calcDivTrunc(dend, dsor, places);
           const roundResult = calcDivRound(dend, dsor, places);
           header = `${dend} ÷ ${dsor} ≈ ${roundResult}`;
-          // stage = 被除数整数位数 + places + 1
-          const intDigits = String(Math.floor(dend)).length;
-          stages = intDigits + places + 1;
+          // stage = 商的整数位数 + places + 1（多算1位用于截断）
+          const quotientIntDigits = String(Math.floor(Number(dend) / Number(dsor))).length;
+          stages = quotientIntDigits + places + 1;
         } else {
           const result = (dend / dsor);
           const d = decimalLen(dend / dsor) || 2;
