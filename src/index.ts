@@ -85,11 +85,12 @@ function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string, extra
 }
 
 function latexDivision(dividend: string, divisor: string, stages?: number): string {
-  const stageKey = stages !== undefined ? `\\longdivisionkeys{stage=${stages}}` : "";
+  const keys = stages !== undefined
+    ? `separators in work=false,stage=${stages}`
+    : `separators in work=false`;
   return `\\documentclass[border=10pt]{standalone}
 \\usepackage{longdivision}
-\\longdivisionkeys{separators in work=false}
-${stageKey}
+\\longdivisionkeys{${keys}}
 \\begin{document}
 \\longdivision{${dividend}}{${divisor}}
 \\end{document}
