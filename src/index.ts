@@ -244,13 +244,13 @@ function setupHandlers(srv: Server) {
 
     switch (name) {
       case "render_addition":
-        return render(latexXlop("opadd", String(args.addend1), String(args.addend2)),
+        return render(latexXlop("opadd", String(args.addend1), String(args.addend2), "voperator=bottom"),
           `${args.addend1}+${args.addend2}`, b64);
       case "render_subtraction":
         return render(latexXlop("opsub", String(args.minuend), String(args.subtrahend), "voperator=bottom"),
           `${args.minuend}-${args.subtrahend}`, b64);
       case "render_multiplication":
-        return render(latexXlop("opmul", String(args.multiplicand), String(args.multiplier)),
+        return render(latexXlop("opmul", String(args.multiplicand), String(args.multiplier), "voperator=bottom"),
           `${args.multiplicand}×${args.multiplier}`, b64);
       case "render_division":
         if (args.divisor === 0) return { content: [{ type: "text", text: "❌ 除数不能为 0" }] };
