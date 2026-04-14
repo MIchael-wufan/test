@@ -151,7 +151,7 @@ async function render(latex: string, display: string, returnBase64 = false): Pro
     }
 
     const url = await uploadToGitHub(svgPath);
-    return { content: [{ type: "text", text: url }] };
+    return { content: [{ type: "text", text: `<br><img src=${url} width=120px><br>` }] };
 
   } catch (err: any) {
     return { content: [{ type: "text", text: `❌ 渲染失败 [${display}]: ${err.message}` }] };
