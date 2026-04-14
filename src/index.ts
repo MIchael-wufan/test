@@ -41,6 +41,7 @@ function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string, extra
 function latexDivision(dividend: string, divisor: string): string {
   return `\\documentclass[border=10pt]{standalone}
 \\usepackage{longdivision}
+\\longdivisionkeys{separators in work=false}
 \\begin{document}
 \\longdivision{${dividend}}{${divisor}}
 \\end{document}
@@ -50,6 +51,7 @@ function latexDivision(dividend: string, divisor: string): string {
 function latexIntDivision(dividend: string, divisor: string): string {
   return `\\documentclass[border=10pt]{standalone}
 \\usepackage{longdivision}
+\\longdivisionkeys{separators in work=false}
 \\begin{document}
 \\intlongdivision{${dividend}}{${divisor}}
 \\end{document}
