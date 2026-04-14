@@ -60,11 +60,11 @@ function latexIntDivision(dividend: string, divisor: string): string {
 
 // ─── Render Pipeline ──────────────────────────────────────────────────────────
 
-function renderToPng(latex: string): { pngPath: string; tmpDir: string } {
+function renderToSvg(latex: string): { svgPath: string; tmpDir: string } {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vcalc-"));
   const texFile = path.join(tmpDir, "calc.tex");
   const pdfFile = path.join(tmpDir, "calc.pdf");
-  const pngFile = path.join(tmpDir, "calc.png");
+  const svgFile = path.join(tmpDir, "calc.svg");
 
   fs.writeFileSync(texFile, latex, "utf-8");
 
@@ -79,33 +79,27 @@ function renderToPng(latex: string): { pngPath: string; tmpDir: string } {
     throw new Error(`pdflatex failed:\n${errs}`);
   }
 
-  // PDF → PNG: transparent background, tight crop via pdftoppm
-  const base = pngFile.replace(".png", "");
-  const r = spawnSync("pdftoppm",
-    ["-r", "200", "-png", "-singlefile", "-transparent", pdfFile, base],
-    { timeout: 15000 });
-  const src = [base + ".png", base + "-1.png"].find(p => fs.existsSync(p));
-  if (r.status === 0 && src) {
-    fs.renameSync(src, pngFile);
-    return { pngPath: pngFile, tmpDir };
+  // PDF → SVG via pdf2svg
+  const r = spawnSync("pdf2svg", [pdfFile, svgFile], { timeout: 15000 });
+  if (r.status === 0 && fs.existsSync(svgFile)) {
+    return { svgPath: svgFile, tmpDir };
   }
 
-  // Fallback: ghostscript with pngalpha (transparent)
-  const gs = spawnSync("gs",
-    ["-dNOPAUSE", "-dBATCH", "-sDEVICE=pngalpha", "-r200",
-     `-sOutputFile=${pngFile}`, pdfFile],
-    { timeout: 15000 });
-  if (gs.status === 0 && fs.existsSync(pngFile)) return { pngPath: pngFile, tmpDir };
+  // Fallback: inkscape
+  const ink = spawnSync("inkscape", ["--pdf-poppler", pdfFile, `--export-filename=${svgFile}`], { timeout: 15000 });
+  if (ink.status === 0 && fs.existsSync(svgFile)) {
+    return { svgPath: svgFile, tmpDir };
+  }
 
-  throw new Error("PDF to PNG conversion failed");
+  throw new Error("PDF to SVG conversion failed");
 }
 
 // ─── GitHub Upload ────────────────────────────────────────────────────────────
 
-async function uploadToGitHub(pngPath: string): Promise<string> {
+async function uploadToGitHub(svgPath: string): Promise<string> {
   if (!GITHUB_TOKEN) throw new Error("GITHUB_TOKEN not set");
-  const filename = `vcalc_${Date.now()}.png`;
-  const content  = fs.readFileSync(pngPath).toString("base64");
+  const filename = `vcalc_${Date.now()}.svg`;
+  const content  = fs.readFileSync(svgPath).toString("base64");
   const payload  = JSON.stringify({
     message: `upload ${filename}`,
     content,
@@ -148,15 +142,15 @@ async function uploadToGitHub(pngPath: string): Promise<string> {
 async function render(latex: string, display: string, returnBase64 = false): Promise<any> {
   let tmpDir: string | undefined;
   try {
-    const { pngPath, tmpDir: td } = renderToPng(latex);
+    const { svgPath, tmpDir: td } = renderToSvg(latex);
     tmpDir = td;
 
     if (returnBase64) {
-      const b64 = fs.readFileSync(pngPath).toString("base64");
-      return { content: [{ type: "image", data: b64, mimeType: "image/png" }] };
+      const b64 = fs.readFileSync(svgPath).toString("base64");
+      return { content: [{ type: "image", data: b64, mimeType: "image/svg+xml" }] };
     }
 
-    const url = await uploadToGitHub(pngPath);
+    const url = await uploadToGitHub(svgPath);
     return { content: [{ type: "text", text: url }] };
 
   } catch (err: any) {

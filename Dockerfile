@@ -13,8 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     texlive-fonts-recommended \
     texlive-plain-generic \
     texlive-science \
-    poppler-utils \
-    ghostscript \
+    pdf2svg \
     curl \
     ca-certificates \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
