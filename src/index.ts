@@ -35,35 +35,39 @@ const REPO_NAME    = process.env.GITHUB_IMAGE_REPO || "test";
 
 /** 精确计算，避免浮点误差，返回字符串 */
 function calcAdd(a: number, b: number): string {
-  const d = Math.max(decimalLen(a), decimalLen(b));
-  return (a + b).toFixed(d);
+  const na = Number(a), nb = Number(b);
+  const d = Math.max(decimalLen(na), decimalLen(nb));
+  return (na + nb).toFixed(d);
 }
 function calcSub(a: number, b: number): string {
-  const d = Math.max(decimalLen(a), decimalLen(b));
-  return (a - b).toFixed(d);
+  const na = Number(a), nb = Number(b);
+  const d = Math.max(decimalLen(na), decimalLen(nb));
+  return (na - nb).toFixed(d);
 }
 function calcMul(a: number, b: number): string {
-  const d = decimalLen(a) + decimalLen(b);
-  return (a * b).toFixed(d);
+  const na = Number(a), nb = Number(b);
+  const d = decimalLen(na) + decimalLen(nb);
+  return (na * nb).toFixed(d);
 }
 function decimalLen(n: number): number {
-  const s = String(n);
+  const s = String(Number(n));
   const i = s.indexOf(".");
   return i === -1 ? 0 : s.length - i - 1;
 }
 /** 除法结果，精确到 places 位小数，截断（不四舍五入） */
 function calcDivTrunc(dividend: number, divisor: number, places: number): string {
   const factor = Math.pow(10, places);
-  return (Math.floor((dividend / divisor) * factor) / factor).toFixed(places);
+  return (Math.floor((Number(dividend) / Number(divisor)) * factor) / factor).toFixed(places);
 }
 /** 除法结果，四舍五入到 places 位小数（用于首行展示约等于） */
 function calcDivRound(dividend: number, divisor: number, places: number): string {
-  return (dividend / divisor).toFixed(places);
+  return (Number(dividend) / Number(divisor)).toFixed(places);
 }
 /** 整数除法：商和余数 */
 function calcIntDiv(dividend: number, divisor: number): { quotient: number; remainder: number } {
-  const q = Math.floor(dividend / divisor);
-  const r = dividend - q * divisor;
+  const nd = Number(dividend), ns = Number(divisor);
+  const q = Math.floor(nd / ns);
+  const r = nd - q * ns;
   return { quotient: q, remainder: r };
 }
 
