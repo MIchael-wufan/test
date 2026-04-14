@@ -24,6 +24,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# 覆盖系统 longdivision.sty（横线延伸到被除数全宽，符合中国书写规范）
+COPY texmf/longdivision.sty /usr/share/texmf/tex/latex/longdivision/longdivision.sty
+RUN mktexlsr
+
 COPY package.json tsconfig.json ./
 RUN npm install
 
