@@ -84,10 +84,8 @@ function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string, extra
 `;
 }
 
-function latexDivision(dividend: string, divisor: string, stages?: number): string {
-  const keys = stages !== undefined
-    ? `separators in work=false,stage=${stages}`
-    : `separators in work=false`;
+function latexDivision(dividend: string, divisor: string): string {
+  const keys = `separators in work=false`;
   return `\\documentclass[border=10pt]{standalone}
 \\usepackage{longdivision}
 \\longdivisionkeys{${keys}}
@@ -498,26 +496,33 @@ function setupHandlers(srv: Server) {
 
         if (places !== undefined) {
           // 保留 places 位，计算到 places+1 位截断
-          const truncResult = calcDivTrunc(dend, dsor, places);
           const roundResult = calcDivRound(dend, dsor, places);
           header = `${dend} ÷ ${dsor} ≈ ${roundResult}`;
-          // stage = 商的整数位数 + places + 1（多算1位用于截断）
-          const quotientIntDigits = String(Math.floor(Number(dend) / Number(dsor))).length;
-          stages = quotientIntDigits + places + 1;
+          // 将被除数格式化为 places+1 位小数传给 LaTeX，使 longdivision 自然在该位停止
+          const dendStr = Number(dend).toFixed(places + 1);
+          const items2: RenderItem[] = [
+            { latex: latexDivision(dendStr, String(dsor)) },
+          ];
+          if (verify) {
+            const quotient = calcDivTrunc(dend, dsor, places);
+            items2.push({
+              label: "验算：",
+              latex: latexXlop("opmul", quotient, String(dsor), "voperator=bottom"),
+            });
+          }
+          return renderAndMerge({ headerText: header, items: items2 }, `${dend}÷${dsor}`);
         } else {
-          const result = (dend / dsor);
-          const d = decimalLen(dend / dsor) || 2;
+          const result = (Number(dend) / Number(dsor));
+          const d = decimalLen(result) || 2;
           header = `${dend} ÷ ${dsor} = ${result.toFixed(d)}`;
         }
 
         const items: RenderItem[] = [
-          { latex: latexDivision(String(dend), String(dsor), stages) },
+          { latex: latexDivision(String(dend), String(dsor)) },
         ];
         if (verify) {
           // 验算：商 × 除数 = 被除数
-          const quotient = places !== undefined
-            ? calcDivTrunc(dend, dsor, places)
-            : (dend / dsor).toFixed(2);
+          const quotient = (Number(dend) / Number(dsor)).toFixed(2);
           items.push({
             label: "验算：",
             latex: latexXlop("opmul", quotient, String(dsor), "voperator=bottom"),
