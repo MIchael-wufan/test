@@ -642,10 +642,17 @@ function setupHandlers(srv: Server) {
         const ddend = args.dividend as number;
         const ddsor = args.divisor as number;
         const dplaces = args.decimalPlaces as number;
-        // 使用手动长除法：精确计算到 places+1 位截断，不依赖 longdivision 参数
-        const { latex: dLatex, quotientApprox: dApprox } = buildManualDivLatex(ddend, ddsor, dplaces);
-        const dheader = `${ddend} ÷ ${ddsor} ≈ ${dApprox}`;
-        return renderAndMerge({ headerText: dheader, items: [{ latex: dLatex }] }, `${ddend}÷${ddsor}(decimal)`);
+        // 小数除数转整数
+        const { newDividend: dNewDend, newDivisor: dNewDsor } = toIntDivisor(ddend, ddsor);
+        const dRoundResult = calcDivRound(dNewDend, dNewDsor, dplaces);
+        const dheader = `${ddend} ÷ ${ddsor} ≈ ${dRoundResult}`;
+        // 被除数补 .0 确保走小数路径，max extra digits 控制截断位数
+        // 被除数补 places+1 个0，让 longdivision 商显示精确到 places 位不多不少
+        const dDendLatex = String(dNewDend).includes(".") ? String(dNewDend) : `${dNewDend}.${"0".repeat(dplaces + 1)}`;
+        const ditems: RenderItem[] = [
+          { latex: latexDivision(dDendLatex, String(dNewDsor), dplaces + 1) },
+        ];
+        return renderAndMerge({ headerText: dheader, items: ditems }, `${ddend}÷${ddsor}(decimal)`);
       }
 
       case "render_integer_division": {
