@@ -71,6 +71,23 @@ function calcIntDiv(dividend: number, divisor: number): { quotient: number; rema
   return { quotient: q, remainder: r };
 }
 
+/**
+ * 小数除数转整数：移位法
+ * 例：6.3 ÷ 0.7 → 63 ÷ 7（两者同乘10）
+ * 例：1.44 ÷ 1.2 → 14.4 ÷ 12（×10）
+ * 例：3.6 ÷ 0.12 → 360 ÷ 12（×100）
+ */
+function toIntDivisor(dividend: number, divisor: number): { newDividend: number; newDivisor: number; shift: number } {
+  const dsorStr = String(divisor);
+  const dotIdx = dsorStr.indexOf(".");
+  if (dotIdx === -1) return { newDividend: dividend, newDivisor: divisor, shift: 0 };
+  const shift = dsorStr.length - dotIdx - 1; // 小数位数
+  const factor = Math.pow(10, shift);
+  const newDivisor = Math.round(divisor * factor); // 变为整数
+  const newDividend = dividend * factor;            // 被除数同乘
+  return { newDividend, newDivisor, shift };
+}
+
 // ─── LaTeX Templates ──────────────────────────────────────────────────────────
 
 function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string, extraOpset = ""): string {
@@ -218,6 +235,7 @@ function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: s
 
   let innerSvg = "";
   let yOffset = 0;
+  let svgIndex = 0;
 
   for (const b of blocks) {
     if (b.type === "label") {
@@ -226,8 +244,8 @@ function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: s
       yOffset += LABEL_HEIGHT + GAP;
     } else {
       const info = (b as any).info as SvgInfo;
-      // 提取 SVG 内部内容（去掉外层 svg 标签，保留 defs + 内容）
-      const inner = extractSvgInner(info.content);
+      // 提取 SVG 内部内容（去掉外层 svg 标签，保留 defs + 内容），并给 id 加唯一前缀防止冲突
+      const inner = extractSvgInner(info.content, svgIndex++);
       const xOffset = (maxWidth - info.width) / 2; // 居中
       const xPx = xOffset * PT_TO_PX;
       const yPx = yOffset * PT_TO_PX;
@@ -249,10 +267,29 @@ ${innerSvg}
   return outPath;
 }
 
-function extractSvgInner(svgContent: string): string {
+function extractSvgInner(svgContent: string, index: number): string {
   // 提取 <svg ...> 和 </svg> 之间的内容
   const match = svgContent.match(/<svg[^>]*>([\s\S]*)<\/svg>/);
-  return match ? match[1] : svgContent;
+  let inner = match ? match[1] : svgContent;
+  const prefix = `s${index}_`;
+
+  // 收集所有 id 值，按长度降序排列以避免短 id 先替换导致误匹配
+  const idMatches = [...inner.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]);
+  const uniqueIds = [...new Set(idMatches)].sort((a, b) => b.length - a.length);
+
+  for (const id of uniqueIds) {
+    const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // 替换 id="xxx"
+    inner = inner.replace(new RegExp(`\\bid="${escaped}"`, "g"), `id="${prefix}${id}"`);
+    // 替换 url(#xxx)
+    inner = inner.replace(new RegExp(`url\\(#${escaped}\\)`, "g"), `url(#${prefix}${id})`);
+    // 替换 href="#xxx"
+    inner = inner.replace(new RegExp(`href="#${escaped}"`, "g"), `href="#${prefix}${id}"`);
+    // 替换 xlink:href="#xxx"
+    inner = inner.replace(new RegExp(`xlink:href="#${escaped}"`, "g"), `xlink:href="#${prefix}${id}"`);
+  }
+
+  return inner;
 }
 
 function escapeXml(s: string): string {
@@ -399,7 +436,7 @@ const TOOLS = [
       type: "object",
       properties: {
         dividend:      { type: "number", description: "被除数" },
-        divisor:       { type: "number", description: "除数（不能为0）" },
+        divisor:       { type: "number", description: "除数（不能为0，支持小数，小数除数将自动转为整数除法）" },
         decimalPlaces: { type: "integer", description: "可选，保留小数位数，计算到该位数+1位后截断" },
         verify:        { type: "boolean", description: "可选，true 则附加验算过程" },
       },
@@ -491,41 +528,43 @@ function setupHandlers(srv: Server) {
         const dsor = args.divisor as number;
         const places = args.decimalPlaces as number | undefined;
 
+        // 小数除数转整数：移位法
+        const { newDividend, newDivisor } = toIntDivisor(dend, dsor);
+
         let header: string;
-        let stages: number | undefined;
 
         if (places !== undefined) {
           // 保留 places 位，计算到 places+1 位截断
-          const roundResult = calcDivRound(dend, dsor, places);
+          const roundResult = calcDivRound(newDividend, newDivisor, places);
           header = `${dend} ÷ ${dsor} ≈ ${roundResult}`;
           // 将被除数格式化为 places+1 位小数传给 LaTeX，使 longdivision 自然在该位停止
-          const dendStr = Number(dend).toFixed(places + 1);
+          const dendStr = Number(newDividend).toFixed(places + 1);
           const items2: RenderItem[] = [
-            { latex: latexDivision(dendStr, String(dsor)) },
+            { latex: latexDivision(dendStr, String(newDivisor)) },
           ];
           if (verify) {
-            const quotient = calcDivTrunc(dend, dsor, places);
+            const quotient = calcDivTrunc(newDividend, newDivisor, places);
             items2.push({
               label: "验算：",
-              latex: latexXlop("opmul", quotient, String(dsor), "voperator=bottom"),
+              latex: latexXlop("opmul", quotient, String(newDivisor), "voperator=bottom"),
             });
           }
           return renderAndMerge({ headerText: header, items: items2 }, `${dend}÷${dsor}`);
         } else {
-          const result = (Number(dend) / Number(dsor));
+          const result = (Number(newDividend) / Number(newDivisor));
           const d = decimalLen(result) || 2;
           header = `${dend} ÷ ${dsor} = ${result.toFixed(d)}`;
         }
 
         const items: RenderItem[] = [
-          { latex: latexDivision(String(dend), String(dsor)) },
+          { latex: latexDivision(String(newDividend), String(newDivisor)) },
         ];
         if (verify) {
           // 验算：商 × 除数 = 被除数
-          const quotient = (Number(dend) / Number(dsor)).toFixed(2);
+          const quotient = (Number(newDividend) / Number(newDivisor)).toFixed(2);
           items.push({
             label: "验算：",
-            latex: latexXlop("opmul", quotient, String(dsor), "voperator=bottom"),
+            latex: latexXlop("opmul", quotient, String(newDivisor), "voperator=bottom"),
           });
         }
         return renderAndMerge({ headerText: header, items }, `${dend}÷${dsor}`);
