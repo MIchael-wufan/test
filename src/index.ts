@@ -638,7 +638,7 @@ function setupHandlers(srv: Server) {
         const dheader = `${ddend} ÷ ${ddsor} ≈ ${dRoundResult}`;
         // 用 longdivision + max extra digits=places+1，被除数传整数，让宏自动处理对齐
         const ditems: RenderItem[] = [
-          { latex: latexDivision(String(dNewDend), String(dNewDsor), dplaces + 1) },
+          { latex: latexDivision(String(dNewDend) + ".", String(dNewDsor), dplaces + 1) },
         ];
         return renderAndMerge({ headerText: dheader, items: ditems }, `${ddend}÷${ddsor}(decimal)`);
       }
