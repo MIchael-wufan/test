@@ -136,6 +136,7 @@ function buildManualDivLatex(origDividend: number, origDivisor: number, places: 
     rows += "  & " + BS + "underline{" + s.mul + "} " + BS + BS + NL;
   }
   rows += "  & " + showSteps[showSteps.length - 1].rem + " " + BS + BS + NL;
+  const qOverline = BS + "makebox[0pt][r]{$" + BS + "overline{" + BS + "smash{" + qTex + "}}$}";
   const latex = BS + "documentclass[border=10pt]{standalone}" + NL
     + BS + "usepackage{array}" + NL
     + BS + "usepackage{amsmath}" + NL
@@ -143,7 +144,7 @@ function buildManualDivLatex(origDividend: number, origDivisor: number, places: 
     + BS + "setlength{" + BS + "tabcolsep}{2pt}" + NL
     + BS + "renewcommand{" + BS + "arraystretch}{1.2}" + NL
     + BS + "begin{tabular}[t]{r@{}r}" + NL
-    + "  & $" + BS + "overline{" + BS + "smash{" + qTex + "}}$" + BS + BS + "[-2pt]" + NL
+    + "  & " + qOverline + BS + BS + "[-2pt]" + NL
     + "  $" + divisor + BS + ",)$ & $" + BS + "overline{" + dendInt + "}$" + BS + BS + NL
     + rows
     + BS + "end{tabular}" + NL
