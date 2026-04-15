@@ -241,7 +241,7 @@ function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: s
     if (b.type === "label") {
       const yText = (yOffset + LABEL_HEIGHT * 0.75) * PT_TO_PX;
       innerSvg += `<text x="0" y="${yText.toFixed(2)}" font-family="serif" font-size="${LABEL_FONT_SIZE}" fill="black">${escapeXml(b.text)}</text>\n`;
-      yOffset += LABEL_HEIGHT + GAP;
+      yOffset += LABEL_HEIGHT + 2; // label 后间距缩小，紧凑排版
     } else {
       const info = (b as any).info as SvgInfo;
       // 提取 SVG 内部内容（去掉外层 svg 标签，保留 defs + 内容），并给 id 加唯一前缀防止冲突
@@ -513,10 +513,11 @@ function setupHandlers(srv: Server) {
           { latex: latexXlop("opmul", String(mc), String(mr), "voperator=bottom") },
         ];
         if (verify) {
-          // 验算：result ÷ mr = mc
+          // 验算：result ÷ mr = mc（小数除数需转整数）
+          const { newDividend: vDend, newDivisor: vDsor } = toIntDivisor(Number(result), mr);
           items.push({
             label: "验算：",
-            latex: latexDivision(result, String(mr)),
+            latex: latexDivision(String(vDend), String(vDsor)),
           });
         }
         return renderAndMerge({ headerText: header, items }, `${mc}×${mr}`);
