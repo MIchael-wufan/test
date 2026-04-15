@@ -508,13 +508,12 @@ const TOOLS = [
   },
   {
     name: "render_division",
-    description: "渲染小数除法竖式，返回SVG图片HTML。支持验算和保留小数位数。",
+    description: "渲染小数除法竖式，返回SVG图片HTML。支持验算。如需保留特定小数位数，请使用 render_division_decimal。",
     inputSchema: {
       type: "object",
       properties: {
         dividend:      { type: "number", description: "被除数" },
         divisor:       { type: "number", description: "除数（不能为0，支持小数，小数除数将自动转为整数除法）" },
-        decimalPlaces: { type: "integer", description: "可选，保留小数位数，计算到该位数+1位后截断" },
         verify:        { type: "boolean", description: "可选，true 则附加验算过程" },
       },
       required: ["dividend", "divisor"],
@@ -522,14 +521,13 @@ const TOOLS = [
   },
   {
     name: "render_division_decimal",
-    description: "渲染保留指定小数位数的除法竖式（精确截断）。凡是有 decimalPlaces 参数的除法，必须使用此工具，能精确控制竖式计算步骤到指定位数。支持小数除数。",
+    description: "渲染保留指定小数位数的除法竖式（精确截断到指定位数）。当需要保留特定小数位数时使用此工具。支持小数除数。",
     inputSchema: {
       type: "object",
       properties: {
         dividend:      { type: "number", description: "被除数" },
         divisor:       { type: "number", description: "除数（不能为0，支持小数）" },
         decimalPlaces: { type: "integer", description: "保留小数位数" },
-        verify:        { type: "boolean", description: "可选，true 则附加验算过程" },
       },
       required: ["dividend", "divisor", "decimalPlaces"],
     },
@@ -618,40 +616,17 @@ function setupHandlers(srv: Server) {
         if (args.divisor === 0) return { content: [{ type: "text", text: "❌ 除数不能为 0" }] };
         const dend = args.dividend as number;
         const dsor = args.divisor as number;
-        const places = args.decimalPlaces as number | undefined;
 
         // 小数除数转整数：移位法
         const { newDividend, newDivisor } = toIntDivisor(dend, dsor);
-
-        let header: string;
-
-        if (places !== undefined) {
-          // 保留 places 位，计算到 places+1 位截断
-          // 用 max extra digits = places+1，控制小数点后最多展示位数（从小数点后开始计数，更可靠）
-          const roundResult = calcDivRound(newDividend, newDivisor, places);
-          header = `${dend} ÷ ${dsor} ≈ ${roundResult}`;
-          const items2: RenderItem[] = [
-            { latex: latexDivision(String(newDividend), String(newDivisor), places + 1) },
-          ];
-          if (verify) {
-            const quotient = calcDivTrunc(newDividend, newDivisor, places);
-            items2.push({
-              label: "验算：",
-              latex: latexXlop("opmul", quotient, String(newDivisor), "voperator=bottom"),
-            });
-          }
-          return renderAndMerge({ headerText: header, items: items2 }, `${dend}÷${dsor}`);
-        } else {
-          const result = (Number(newDividend) / Number(newDivisor));
-          const d = decimalLen(result) || 2;
-          header = `${dend} ÷ ${dsor} = ${result.toFixed(d)}`;
-        }
+        const result = (Number(newDividend) / Number(newDivisor));
+        const d = decimalLen(result) || 2;
+        const header = `${dend} ÷ ${dsor} = ${result.toFixed(d)}`;
 
         const items: RenderItem[] = [
           { latex: latexDivision(String(newDividend), String(newDivisor)) },
         ];
         if (verify) {
-          // 验算：商 × 除数 = 被除数
           const quotient = (Number(newDividend) / Number(newDivisor)).toFixed(2);
           items.push({
             label: "验算：",
@@ -666,17 +641,15 @@ function setupHandlers(srv: Server) {
         const ddend = args.dividend as number;
         const ddsor = args.divisor as number;
         const dplaces = args.decimalPlaces as number;
-        const { latex: manualLatex, quotientDisplay, quotientApprox } = buildManualDivLatex(ddend, ddsor, dplaces);
-        const dheader = `${ddend} ÷ ${ddsor} ≈ ${quotientApprox}`;
-        const ditems: RenderItem[] = [{ latex: manualLatex }];
-        if (verify) {
-          // 验算：商 × 除数（已转整数） = 被除数（已转整数）
-          const { newDivisor: vDsor, newDividend: vDend } = toIntDivisor(ddend, ddsor);
-          ditems.push({
-            label: "验算：",
-            latex: latexXlop("opmul", quotientDisplay, String(vDsor), "voperator=bottom"),
-          });
-        }
+        // 小数除数转整数
+        const { newDividend: dNewDend, newDivisor: dNewDsor } = toIntDivisor(ddend, ddsor);
+        const dRoundResult = calcDivRound(dNewDend, dNewDsor, dplaces);
+        const dheader = `${ddend} ÷ ${ddsor} ≈ ${dRoundResult}`;
+        // 被除数补 .0 确保走小数路径，max extra digits 控制截断位数
+        const dDendLatex = String(dNewDend).includes(".") ? String(dNewDend) : `${dNewDend}.0`;
+        const ditems: RenderItem[] = [
+          { latex: latexDivision(dDendLatex, String(dNewDsor), dplaces + 1) },
+        ];
         return renderAndMerge({ headerText: dheader, items: ditems }, `${ddend}÷${ddsor}(decimal)`);
       }
 
