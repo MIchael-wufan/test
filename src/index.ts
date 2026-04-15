@@ -117,7 +117,6 @@ function buildManualDivLatex(origDividend: number, origDivisor: number, places: 
     steps.push({ brought: current, q, mul, rem });
     remainder = rem;
   }
-  // 商：整数部分 + places+1 位小数（截断，用于四舍五入判断）
   const qIntDigits = steps.slice(0, digits.length).map(s => String(s.q));
   const qFracDigits = steps.slice(digits.length, digits.length + places + 1).map(s => String(s.q));
   const qIntStr = qIntDigits.join("").replace(/^0+/, "") || "0";
@@ -129,30 +128,30 @@ function buildManualDivLatex(origDividend: number, origDivisor: number, places: 
   }
   const showSteps = steps.slice(firstValid, digits.length + places + 1);
   const qTex = quotientDisplay.replace(".", "{.}");
-  // 减数用 \underline 包住，横线只覆盖数字本身宽度
+  const NL = "\n";
+  const BS2 = "\\\\";
   let rows = "";
   for (const s of showSteps) {
-    rows += "  " + s.brought + " \\\\
-";
-    rows += "  \\underline{" + s.mul + "} \\\\
-";
+    rows += "  " + s.brought + " " + BS2 + NL;
+    rows += "  \\underline{" + s.mul + "} " + BS2 + NL;
   }
   if (showSteps.length > 0) {
-    rows += "  " + showSteps[showSteps.length - 1].rem + " \\\\
-";
+    rows += "  " + showSteps[showSteps.length - 1].rem + " " + BS2 + NL;
   }
-  const latex = "\\documentclass[border=10pt]{standalone}\n"
-    + "\\usepackage{array}\n"
-    + "\\usepackage{amsmath}\n"
-    + "\\begin{document}\n"
-    + "\\setlength{\\tabcolsep}{2pt}\n"
-    + "\\renewcommand{\\arraystretch}{1.2}\n"
-    + "\\begin{tabular}[t]{r}\n"
-    + "  \\multicolumn{1}{r}{$\\overline{\\smash{" + qTex + "}}$} \\\\[-2pt]\n"
-    + "  \\multicolumn{1}{l}{$" + divisor + "\\,)\\overline{" + dendInt + "}$} \\\\[1pt] \\hline\n"
+  const qLine = "  \\multicolumn{1}{r}{$\\overline{\\smash{" + qTex + "}}$} " + BS2 + "[-2pt]" + NL;
+  const dLine = "  \\multicolumn{1}{l}{$" + divisor + "\\,)\\overline{" + dendInt + "}$} " + BS2 + "[1pt] \\hline" + NL;
+  const latex = "\\documentclass[border=10pt]{standalone}" + NL
+    + "\\usepackage{array}" + NL
+    + "\\usepackage{amsmath}" + NL
+    + "\\begin{document}" + NL
+    + "\\setlength{\\tabcolsep}{2pt}" + NL
+    + "\\renewcommand{\\arraystretch}{1.2}" + NL
+    + "\\begin{tabular}[t]{r}" + NL
+    + qLine
+    + dLine
     + rows
-    + "\\end{tabular}\n"
-    + "\\end{document}\n";
+    + "\\end{tabular}" + NL
+    + "\\end{document}" + NL;
   return { latex, quotientDisplay, quotientApprox };
 }
 
