@@ -632,10 +632,15 @@ function setupHandlers(srv: Server) {
         const ddend = args.dividend as number;
         const ddsor = args.divisor as number;
         const dplaces = args.decimalPlaces as number;
-        // 手动长除法：精确截断到 places 位，不依赖 longdivision
-        const { latex: dLatex, quotientApprox: dApprox } = buildManualDivLatex(ddend, ddsor, dplaces);
-        const dheader = `${ddend} ÷ ${ddsor} ≈ ${dApprox}`;
-        return renderAndMerge({ headerText: dheader, items: [{ latex: dLatex }] }, `${ddend}÷${ddsor}(decimal)`);
+        // 小数除数转整数（如 6.3÷0.7 → 63÷7）
+        const { newDividend: dNewDend, newDivisor: dNewDsor } = toIntDivisor(ddend, ddsor);
+        const dRoundResult = calcDivRound(dNewDend, dNewDsor, dplaces);
+        const dheader = `${ddend} ÷ ${ddsor} ≈ ${dRoundResult}`;
+        // 用 longdivision + max extra digits=places+1，被除数传整数，让宏自动处理对齐
+        const ditems: RenderItem[] = [
+          { latex: latexDivision(String(dNewDend), String(dNewDsor), dplaces + 1) },
+        ];
+        return renderAndMerge({ headerText: dheader, items: ditems }, `${ddend}÷${ddsor}(decimal)`);
       }
 
       case "render_integer_division": {
