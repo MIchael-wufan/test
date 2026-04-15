@@ -366,20 +366,11 @@ function escapeXml(s: string): string {
 
 // ─── GitHub Upload ────────────────────────────────────────────────────────────
 
-async function uploadToGitHub(svgPath: string): Promise<string> {
-  if (!GITHUB_TOKEN) throw new Error("GITHUB_TOKEN not set");
-  const filename = `vcalc_${Date.now()}.svg`;
-  const content  = fs.readFileSync(svgPath).toString("base64");
-  const payload  = JSON.stringify({
-    message: `upload ${filename}`,
-    content,
-    branch: "main",
-  });
-
+async function ghPut(path: string, payload: string): Promise<any> {
   return new Promise((resolve, reject) => {
     const req = https.request({
       hostname: "api.github.com",
-      path: `/repos/${REPO_OWNER}/${REPO_NAME}/contents/images/${filename}`,
+      path,
       method: "PUT",
       headers: {
         "Authorization": `Bearer ${GITHUB_TOKEN}`,
@@ -393,18 +384,68 @@ async function uploadToGitHub(svgPath: string): Promise<string> {
       let data = "";
       res.on("data", c => data += c);
       res.on("end", () => {
-        try {
-          const url = JSON.parse(data)?.content?.download_url;
-          url ? resolve(url) : reject(new Error(`Upload failed (${res.statusCode}): ${data.slice(0, 200)}`));
-        } catch (e) {
-          reject(new Error(`Parse error: ${data.slice(0, 200)}`));
-        }
+        try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
+        catch (e) { reject(new Error(`Parse error: ${data.slice(0, 200)}`)); }
       });
     });
     req.on("error", reject);
     req.write(payload);
     req.end();
   });
+}
+
+async function ghGet(path: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: "api.github.com",
+      path,
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${GITHUB_TOKEN}`,
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "vertical-calc-mcp/5.0",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    }, (res) => {
+      let data = "";
+      res.on("data", c => data += c);
+      res.on("end", () => {
+        try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
+        catch (e) { reject(new Error(`Parse error: ${data.slice(0, 200)}`)); }
+      });
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+async function uploadToGitHub(svgPath: string): Promise<string> {
+  if (!GITHUB_TOKEN) throw new Error("GITHUB_TOKEN not set");
+  const filename = `vcalc_${Date.now()}.svg`;
+  const content  = fs.readFileSync(svgPath).toString("base64");
+  const apiPath  = `/repos/${REPO_OWNER}/${REPO_NAME}/contents/images/${filename}`;
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    // 409 时先获取当前 SHA 再重试；首次不需要 SHA（新文件）
+    let sha: string | undefined;
+    if (attempt > 0) {
+      const getRes = await ghGet(apiPath);
+      sha = getRes.body?.sha;
+      await new Promise(r => setTimeout(r, 500 * attempt));
+    }
+    const bodyObj: any = { message: `upload ${filename}`, content, branch: "main" };
+    if (sha) bodyObj.sha = sha;
+    const payload = JSON.stringify(bodyObj);
+    const res = await ghPut(apiPath, payload);
+    if (res.status === 200 || res.status === 201) {
+      const url = res.body?.content?.download_url;
+      if (url) return url;
+      throw new Error(`Upload ok but no download_url: ${JSON.stringify(res.body).slice(0, 200)}`);
+    }
+    if (res.status === 409) continue; // retry with sha
+    throw new Error(`Upload failed (${res.status}): ${JSON.stringify(res.body).slice(0, 200)}`);
+  }
+  throw new Error(`Upload failed after 3 attempts`);
 }
 
 // ─── Core Render & Merge ──────────────────────────────────────────────────────
