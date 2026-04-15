@@ -101,8 +101,9 @@ function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string, extra
 `;
 }
 
-function latexDivision(dividend: string, divisor: string): string {
-  const keys = `separators in work=false`;
+function latexDivision(dividend: string, divisor: string, stage?: number): string {
+  const stagePart = stage !== undefined ? `,stage=${stage}` : "";
+  const keys = `separators in work=false${stagePart}`;
   return `\\documentclass[border=10pt]{standalone}
 \\usepackage{longdivision}
 \\longdivisionkeys{${keys}}
@@ -536,12 +537,11 @@ function setupHandlers(srv: Server) {
 
         if (places !== undefined) {
           // 保留 places 位，计算到 places+1 位截断
+          // 用 stage=places+1 告诉 longdivision 只展示到第 places+1 位小数，不格式化被除数（避免无限循环）
           const roundResult = calcDivRound(newDividend, newDivisor, places);
           header = `${dend} ÷ ${dsor} ≈ ${roundResult}`;
-          // 将被除数格式化为 places+1 位小数传给 LaTeX，使 longdivision 自然在该位停止
-          const dendStr = Number(newDividend).toFixed(places + 1);
           const items2: RenderItem[] = [
-            { latex: latexDivision(dendStr, String(newDivisor)) },
+            { latex: latexDivision(String(newDividend), String(newDivisor), places + 1) },
           ];
           if (verify) {
             const quotient = calcDivTrunc(newDividend, newDivisor, places);
