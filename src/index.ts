@@ -122,10 +122,13 @@ function buildManualDivLatex(origDividend: number, origDivisor: number, places: 
   }
 
   // 3. 商字符串
+  // 商的整数部分：被除数位数对应的商位（去前导0）
+  // 商的小数部分：取 places 位（截断显示），allDigits 多补了1位用于计算但不显示
   const qIntDigits = steps.slice(0, digits.length).map(s => String(s.q));
   const qFracDigits = steps.slice(digits.length, digits.length + places).map(s => String(s.q));
   const qIntStr = qIntDigits.join("").replace(/^0+/, "") || "0";
-  const quotientDisplay = qIntStr + "." + qFracDigits.join("");
+  // 去掉整数部分多余的前导0（如 "012" → "12"），小数部分精确 places 位
+  const quotientDisplay = qIntStr + "." + qFracDigits.join("").slice(0, places);
   const quotientApprox = calcDivRound(dendInt, divisor, places);
 
   // 4. 找第一步有效步（第一个 q>0）
