@@ -132,21 +132,20 @@ function buildManualDivLatex(origDividend: number, origDivisor: number, places: 
   const NL = String.fromCharCode(10);
   let rows = "";
   for (const s of showSteps) {
-    rows += "  " + s.brought + " " + BS + BS + NL;
-    rows += "  " + BS + "underline{" + s.mul + "} " + BS + BS + NL;
+    rows += "  & " + s.brought + " " + BS + BS + NL;
+    rows += "  & " + BS + "underline{" + s.mul + "} " + BS + BS + NL;
   }
-  rows += "  " + showSteps[showSteps.length - 1].rem + " " + BS + BS + NL;
-  const divisorBracket = "$" + divisor + BS + ",)$";
+  rows += "  & " + showSteps[showSteps.length - 1].rem + " " + BS + BS + NL;
+  const qOverline = BS + "makebox[0pt][r]{$" + BS + "overline{" + BS + "smash{" + qTex + "}}$}";
   const latex = BS + "documentclass[border=10pt]{standalone}" + NL
+    + BS + "usepackage{array}" + NL
     + BS + "usepackage{amsmath}" + NL
-    + BS + "newlength{" + BS + "divisorwidth}" + NL
     + BS + "begin{document}" + NL
-    + BS + "settowidth{" + BS + "divisorwidth}{" + divisorBracket + "}" + NL
     + BS + "setlength{" + BS + "tabcolsep}{2pt}" + NL
     + BS + "renewcommand{" + BS + "arraystretch}{1.2}" + NL
-    + BS + "begin{tabular}[t]{r}" + NL
-    + "  " + BS + "hspace{" + BS + "divisorwidth}$" + BS + "overline{" + BS + "smash{" + qTex + "}}$ " + BS + BS + "[-3pt]" + NL
-    + "  " + divisorBracket + "$" + BS + "overline{" + dendInt + "}$ " + BS + BS + NL
+    + BS + "begin{tabular}[t]{r@{}r}" + NL
+    + "  & " + qOverline + BS + BS + "[-2pt]" + NL
+    + "  $" + divisor + BS + ",)$ & $" + BS + "overline{" + dendInt + "}$" + BS + BS + NL
     + rows
     + BS + "end{tabular}" + NL
     + BS + "end{document}" + NL;
@@ -637,9 +636,11 @@ function setupHandlers(srv: Server) {
         const { newDividend: dNewDend, newDivisor: dNewDsor } = toIntDivisor(ddend, ddsor);
         const dRoundResult = calcDivRound(dNewDend, dNewDsor, dplaces);
         const dheader = `${ddend} ÷ ${ddsor} ≈ ${dRoundResult}`;
-        const { latex: dLatex, quotientApprox: dApprox } = buildManualDivLatex(ddend, ddsor, dplaces);
-        const dheaderM = `${ddend} ÷ ${ddsor} ≈ ${dApprox}`;
-        return renderAndMerge({ headerText: dheaderM, items: [{ latex: dLatex }] }, `${ddend}÷${ddsor}(decimal)`);
+        // 用 longdivision + max extra digits=places+1，被除数传整数，让宏自动处理对齐
+        const ditems: RenderItem[] = [
+          { latex: latexDivision(String(dNewDend), String(dNewDsor), dplaces + 1) },
+        ];
+        return renderAndMerge({ headerText: dheader, items: ditems }, `${ddend}÷${ddsor}(decimal)`);
       }
 
       case "render_integer_division": {
