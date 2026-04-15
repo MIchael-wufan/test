@@ -88,6 +88,83 @@ function toIntDivisor(dividend: number, divisor: number): { newDividend: number;
   return { newDividend, newDivisor, shift };
 }
 
+
+// ─── Manual Long Division LaTeX ───────────────────────────────────────────────
+
+/**
+ * 手动模拟长除法并生成 LaTeX 竖式（完全不依赖 longdivision 宏包）
+ * 精确控制计算到 places 位小数后截断。
+ */
+function buildManualDivLatex(origDividend: number, origDivisor: number, places: number): { latex: string; quotientDisplay: string; quotientApprox: string } {
+  // 1. 除数移位转整数
+  const dsorStr = String(origDivisor);
+  const dotIdx = dsorStr.indexOf(".");
+  const shift = dotIdx === -1 ? 0 : dsorStr.length - dotIdx - 1;
+  const factor = Math.pow(10, shift);
+  const divisor = Math.round(origDivisor * factor);
+  const dendInt = Math.round(origDividend * factor);
+  const dendStr = String(dendInt);
+  const digits = dendStr.split("");
+
+  // 2. 逐位计算（places+1 位小数，截断取 places 位）
+  const allDigits = [...digits, ...Array(places + 1).fill("0")];
+  interface Step { brought: number; q: number; mul: number; rem: number; }
+  const steps: Step[] = [];
+  let remainder = 0;
+  for (const d of allDigits) {
+    const current = remainder * 10 + parseInt(d, 10);
+    const q = Math.floor(current / divisor);
+    const mul = q * divisor;
+    const rem = current - mul;
+    steps.push({ brought: current, q, mul, rem });
+    remainder = rem;
+  }
+
+  // 3. 商字符串
+  const qIntDigits = steps.slice(0, digits.length).map(s => String(s.q));
+  const qFracDigits = steps.slice(digits.length, digits.length + places).map(s => String(s.q));
+  const qIntStr = qIntDigits.join("").replace(/^0+/, "") || "0";
+  const quotientDisplay = `${qIntStr}.${qFracDigits.join("")}`;
+  // 四舍五入版本（首行展示）
+  const quotientApprox = calcDivRound(dendInt, divisor, places);
+
+  // 4. 找第一步有效步（第一个 q>0 的位置，前面的0步合并进带入数）
+  let firstValid = 0;
+  for (let i = 0; i < steps.length; i++) {
+    if (steps[i].q > 0) { firstValid = i; break; }
+  }
+  const showSteps = steps.slice(firstValid, digits.length + places);
+
+  // 5. 生成 LaTeX tabular（r 列右对齐，hline 分隔每步）
+  const qTex = quotientDisplay.replace(".", "{.}");
+  let rows = "";
+  for (const s of showSteps) {
+    rows += `  ${s.brought} \\
+`;
+    rows += `  ${s.mul} \\ \hline
+`;
+  }
+  // 最后一步余数
+  if (showSteps.length > 0) {
+    rows += `  ${showSteps[showSteps.length - 1].rem} \\
+`;
+  }
+
+  const latex = `\documentclass[border=10pt]{standalone}
+\usepackage{array}
+\begin{document}
+\setlength{\tabcolsep}{2pt}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}[t]{r}
+  \multicolumn{1}{r}{\overline{\smash{${qTex}}}} \\[-2pt]
+  \multicolumn{1}{l}{${divisor}\,)\overline{${dendInt}}} \\[1pt] \hline
+${rows}\end{tabular}
+\end{document}
+`;
+
+  return { latex, quotientDisplay, quotientApprox };
+}
+
 // ─── LaTeX Templates ──────────────────────────────────────────────────────────
 
 function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string, extraOpset = ""): string {
@@ -447,6 +524,20 @@ const TOOLS = [
     },
   },
   {
+    name: "render_division_decimal",
+    description: "渲染保留指定小数位数的除法竖式（精确截断）。凡是有 decimalPlaces 参数的除法，必须使用此工具，能精确控制竖式计算步骤到指定位数。支持小数除数。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dividend:      { type: "number", description: "被除数" },
+        divisor:       { type: "number", description: "除数（不能为0，支持小数）" },
+        decimalPlaces: { type: "integer", description: "保留小数位数" },
+        verify:        { type: "boolean", description: "可选，true 则附加验算过程" },
+      },
+      required: ["dividend", "divisor", "decimalPlaces"],
+    },
+  },
+  {
     name: "render_integer_division",
     description: "渲染整数除法竖式（带余数），返回SVG图片HTML。支持验算。",
     inputSchema: {
@@ -571,6 +662,25 @@ function setupHandlers(srv: Server) {
           });
         }
         return renderAndMerge({ headerText: header, items }, `${dend}÷${dsor}`);
+      }
+
+      case "render_division_decimal": {
+        if (args.divisor === 0) return { content: [{ type: "text", text: "❌ 除数不能为 0" }] };
+        const ddend = args.dividend as number;
+        const ddsor = args.divisor as number;
+        const dplaces = args.decimalPlaces as number;
+        const { latex: manualLatex, quotientDisplay, quotientApprox } = buildManualDivLatex(ddend, ddsor, dplaces);
+        const dheader = `${ddend} ÷ ${ddsor} ≈ ${quotientApprox}`;
+        const ditems: RenderItem[] = [{ latex: manualLatex }];
+        if (verify) {
+          // 验算：商 × 除数（已转整数） = 被除数（已转整数）
+          const { newDivisor: vDsor, newDividend: vDend } = toIntDivisor(ddend, ddsor);
+          ditems.push({
+            label: "验算：",
+            latex: latexXlop("opmul", quotientDisplay, String(vDsor), "voperator=bottom"),
+          });
+        }
+        return renderAndMerge({ headerText: dheader, items: ditems }, `${ddend}÷${ddsor}(decimal)`);
       }
 
       case "render_integer_division": {
