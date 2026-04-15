@@ -124,43 +124,39 @@ function buildManualDivLatex(origDividend: number, origDivisor: number, places: 
   const qIntDigits = steps.slice(0, digits.length).map(s => String(s.q));
   const qFracDigits = steps.slice(digits.length, digits.length + places).map(s => String(s.q));
   const qIntStr = qIntDigits.join("").replace(/^0+/, "") || "0";
-  const quotientDisplay = `${qIntStr}.${qFracDigits.join("")}`;
-  // 四舍五入版本（首行展示）
+  const quotientDisplay = qIntStr + "." + qFracDigits.join("");
   const quotientApprox = calcDivRound(dendInt, divisor, places);
 
-  // 4. 找第一步有效步（第一个 q>0 的位置，前面的0步合并进带入数）
+  // 4. 找第一步有效步（第一个 q>0）
   let firstValid = 0;
   for (let i = 0; i < steps.length; i++) {
     if (steps[i].q > 0) { firstValid = i; break; }
   }
   const showSteps = steps.slice(firstValid, digits.length + places);
 
-  // 5. 生成 LaTeX tabular（r 列右对齐，hline 分隔每步）
+  // 5. 生成 LaTeX — 注意 \\ 在 TS 模板字符串里 = 一个反斜杠，LaTeX 换行需要两个反斜杠即写 \\\\
   const qTex = quotientDisplay.replace(".", "{.}");
+  // 用普通字符串拼接 rows，避免嵌套转义混乱
   let rows = "";
   for (const s of showSteps) {
-    rows += `  ${s.brought} \\
-`;
-    rows += `  ${s.mul} \\ \hline
-`;
+    rows += "  " + s.brought + " \\\\\n";
+    rows += "  " + s.mul + " \\\\ \\hline\n";
   }
-  // 最后一步余数
   if (showSteps.length > 0) {
-    rows += `  ${showSteps[showSteps.length - 1].rem} \\
-`;
+    rows += "  " + showSteps[showSteps.length - 1].rem + " \\\\\n";
   }
 
-  const latex = `\documentclass[border=10pt]{standalone}
-\usepackage{array}
-\begin{document}
-\setlength{\tabcolsep}{2pt}
-\renewcommand{\arraystretch}{1.2}
-\begin{tabular}[t]{r}
-  \multicolumn{1}{r}{\overline{\smash{${qTex}}}} \\[-2pt]
-  \multicolumn{1}{l}{${divisor}\,)\overline{${dendInt}}} \\[1pt] \hline
-${rows}\end{tabular}
-\end{document}
-`;
+  const latex = "\\documentclass[border=10pt]{standalone}\n"
+    + "\\usepackage{array}\n"
+    + "\\begin{document}\n"
+    + "\\setlength{\\tabcolsep}{2pt}\n"
+    + "\\renewcommand{\\arraystretch}{1.2}\n"
+    + "\\begin{tabular}[t]{r}\n"
+    + "  \\multicolumn{1}{r}{\\overline{\\smash{" + qTex + "}}} \\\\[-2pt]\n"
+    + "  \\multicolumn{1}{l}{" + divisor + "\\,)\\overline{" + dendInt + "}} \\\\[1pt] \\hline\n"
+    + rows
+    + "\\end{tabular}\n"
+    + "\\end{document}\n";
 
   return { latex, quotientDisplay, quotientApprox };
 }
