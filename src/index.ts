@@ -101,9 +101,11 @@ function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string, extra
 `;
 }
 
-function latexDivision(dividend: string, divisor: string, stage?: number): string {
-  const stagePart = stage !== undefined ? `,stage=${stage}` : "";
-  const keys = `separators in work=false${stagePart}`;
+function latexDivision(dividend: string, divisor: string, maxExtraDigits?: number): string {
+  // maxExtraDigits 控制小数点后最多展示多少位（places+1），使用 max extra digits 而非 stage
+  // max extra digits 是从小数点后开始计数，更直观可靠
+  const extraPart = maxExtraDigits !== undefined ? `,max extra digits=${maxExtraDigits}` : "";
+  const keys = `separators in work=false${extraPart}`;
   return `\\documentclass[border=10pt]{standalone}
 \\usepackage{longdivision}
 \\longdivisionkeys{${keys}}
@@ -537,16 +539,11 @@ function setupHandlers(srv: Server) {
 
         if (places !== undefined) {
           // 保留 places 位，计算到 places+1 位截断
-          // stage = 被除数整数位数 + (places+1)
-          // 因为 longdivision 的 position 从被除数第一位开始计数（含整数部分），不是从小数点后开始
+          // 用 max extra digits = places+1，控制小数点后最多展示位数（从小数点后开始计数，更可靠）
           const roundResult = calcDivRound(newDividend, newDivisor, places);
           header = `${dend} ÷ ${dsor} ≈ ${roundResult}`;
-          const dendLatex = String(newDividend).includes(".") ? String(newDividend) : `${newDividend}.0`;
-          // 计算被除数整数部分位数
-          const intPartDigits = String(Math.floor(Math.abs(newDividend))).length;
-          const stage = intPartDigits + places + 1;
           const items2: RenderItem[] = [
-            { latex: latexDivision(dendLatex, String(newDivisor), stage) },
+            { latex: latexDivision(String(newDividend), String(newDivisor), places + 1) },
           ];
           if (verify) {
             const quotient = calcDivTrunc(newDividend, newDivisor, places);
