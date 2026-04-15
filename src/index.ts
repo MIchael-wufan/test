@@ -91,6 +91,8 @@ function toIntDivisor(dividend: number, divisor: number): { newDividend: number;
 
 // ─── Manual Long Division LaTeX ───────────────────────────────────────────────
 
+interface DivStep { brought: number; q: number; mul: number; rem: number; }
+
 /**
  * 手动模拟长除法并生成 LaTeX 竖式（完全不依赖 longdivision 宏包）
  * 精确控制计算到 places 位小数后截断。
@@ -108,8 +110,7 @@ function buildManualDivLatex(origDividend: number, origDivisor: number, places: 
 
   // 2. 逐位计算（places+1 位小数，截断取 places 位）
   const allDigits = [...digits, ...Array(places + 1).fill("0")];
-  interface Step { brought: number; q: number; mul: number; rem: number; }
-  const steps: Step[] = [];
+  const steps: DivStep[] = [];
   let remainder = 0;
   for (const d of allDigits) {
     const current = remainder * 10 + parseInt(d, 10);
