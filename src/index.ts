@@ -537,13 +537,16 @@ function setupHandlers(srv: Server) {
 
         if (places !== undefined) {
           // 保留 places 位，计算到 places+1 位截断
-          // 用 stage=places+1 告诉 longdivision 只展示到第 places+1 位小数
-          // 注意：被除数必须含小数点（如 "4530.0"），否则 longdivision 走整数路径，stage 不生效
+          // stage = 被除数整数位数 + (places+1)
+          // 因为 longdivision 的 position 从被除数第一位开始计数（含整数部分），不是从小数点后开始
           const roundResult = calcDivRound(newDividend, newDivisor, places);
           header = `${dend} ÷ ${dsor} ≈ ${roundResult}`;
           const dendLatex = String(newDividend).includes(".") ? String(newDividend) : `${newDividend}.0`;
+          // 计算被除数整数部分位数
+          const intPartDigits = String(Math.floor(Math.abs(newDividend))).length;
+          const stage = intPartDigits + places + 1;
           const items2: RenderItem[] = [
-            { latex: latexDivision(dendLatex, String(newDivisor), places + 1) },
+            { latex: latexDivision(dendLatex, String(newDivisor), stage) },
           ];
           if (verify) {
             const quotient = calcDivTrunc(newDividend, newDivisor, places);
