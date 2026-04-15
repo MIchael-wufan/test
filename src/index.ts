@@ -137,7 +137,7 @@ function buildManualDivLatex(origDividend: number, origDivisor: number, places: 
   }
   rows += "  " + showSteps[showSteps.length - 1].rem + " " + BS + BS + NL;
   const phantomStr = "$" + divisor + BS + ",)" + dendInt + "$";
-  const qLine = "  " + BS + "rlap{" + BS + "raisebox{1.2ex}{$" + BS + "overline{" + BS + "smash{" + qTex + "}}$}}" + BS + "phantom{" + phantomStr + "} " + BS + BS + "[-1.8ex]" + NL;
+  const qLine = "  " + BS + "rlap{" + BS + "raisebox{1.2ex}{$" + BS + "overline{" + BS + "smash{" + qTex + "}}$}}" + BS + "phantom{" + phantomStr + "} " + BS + BS + "[-2.5ex]" + NL;
   const dLine = "  $" + divisor + BS + ",)" + BS + "overline{" + dendInt + "}$ " + BS + BS + NL;
   const latex = BS + "documentclass[border=10pt]{standalone}" + NL
     + BS + "usepackage{array}" + NL
