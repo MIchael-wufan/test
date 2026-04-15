@@ -549,8 +549,8 @@ function setupHandlers(srv: Server) {
     switch (name) {
 
       case "render_addition": {
-        const a1 = args.addend1 as number;
-        const a2 = args.addend2 as number;
+        const a1 = Number(args.addend1);
+        const a2 = Number(args.addend2);
         const result = calcAdd(a1, a2);
         const header = `${a1} + ${a2} = ${result}`;
         const items: RenderItem[] = [
@@ -567,8 +567,8 @@ function setupHandlers(srv: Server) {
       }
 
       case "render_subtraction": {
-        const m = args.minuend as number;
-        const s = args.subtrahend as number;
+        const m = Number(args.minuend);
+        const s = Number(args.subtrahend);
         const result = calcSub(m, s);
         const header = `${m} - ${s} = ${result}`;
         const items: RenderItem[] = [
@@ -585,8 +585,8 @@ function setupHandlers(srv: Server) {
       }
 
       case "render_multiplication": {
-        const mc = args.multiplicand as number;
-        const mr = args.multiplier as number;
+        const mc = Number(args.multiplicand);
+        const mr = Number(args.multiplier);
         const result = calcMul(mc, mr);
         const header = `${mc} × ${mr} = ${result}`;
         const items: RenderItem[] = [
@@ -605,8 +605,8 @@ function setupHandlers(srv: Server) {
 
       case "render_division": {
         if (args.divisor === 0) return { content: [{ type: "text", text: "❌ 除数不能为 0" }] };
-        const dend = args.dividend as number;
-        const dsor = args.divisor as number;
+        const dend = Number(args.dividend);
+        const dsor = Number(args.divisor);
 
         // 小数除数转整数：移位法
         const { newDividend, newDivisor } = toIntDivisor(dend, dsor);
@@ -629,9 +629,9 @@ function setupHandlers(srv: Server) {
 
       case "render_division_decimal": {
         if (args.divisor === 0) return { content: [{ type: "text", text: "❌ 除数不能为 0" }] };
-        const ddend = args.dividend as number;
-        const ddsor = args.divisor as number;
-        const dplaces = args.decimalPlaces as number;
+        const ddend = Number(args.dividend);
+        const ddsor = Number(args.divisor);
+        const dplaces = Number(args.decimalPlaces);
         // 小数除数转整数（如 6.3÷0.7 → 63÷7）
         const { newDividend: dNewDend, newDivisor: dNewDsor } = toIntDivisor(ddend, ddsor);
         const dRoundResult = calcDivRound(dNewDend, dNewDsor, dplaces);
@@ -645,8 +645,8 @@ function setupHandlers(srv: Server) {
 
       case "render_integer_division": {
         if (args.divisor === 0) return { content: [{ type: "text", text: "❌ 除数不能为 0" }] };
-        const dend = args.dividend as number;
-        const dsor = args.divisor as number;
+        const dend = Number(args.dividend);
+        const dsor = Number(args.divisor);
         const { quotient, remainder } = calcIntDiv(dend, dsor);
         const header = remainder === 0
           ? `${dend} ÷ ${dsor} = ${quotient}`
