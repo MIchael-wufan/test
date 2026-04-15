@@ -98,7 +98,6 @@ interface DivStep { brought: number; q: number; mul: number; rem: number; }
  * 精确控制计算到 places 位小数后截断。
  */
 function buildManualDivLatex(origDividend: number, origDivisor: number, places: number): { latex: string; quotientDisplay: string; quotientApprox: string } {
-  // 1. 除数移位转整数
   const dsorStr = String(origDivisor);
   const dotIdx = dsorStr.indexOf(".");
   const shift = dotIdx === -1 ? 0 : dsorStr.length - dotIdx - 1;
@@ -107,9 +106,7 @@ function buildManualDivLatex(origDividend: number, origDivisor: number, places: 
   const dendInt = Math.round(origDividend * factor);
   const dendStr = String(dendInt);
   const digits = dendStr.split("");
-
-  // 2. 逐位计算（places+1 位小数，截断取 places 位）
-  const allDigits = [...digits, ...Array(places + 1).fill("0")];
+  const allDigits = [...digits, ...Array(places + 2).fill("0")];
   const steps: DivStep[] = [];
   let remainder = 0;
   for (const d of allDigits) {
@@ -120,36 +117,30 @@ function buildManualDivLatex(origDividend: number, origDivisor: number, places: 
     steps.push({ brought: current, q, mul, rem });
     remainder = rem;
   }
-
-  // 3. 商字符串
-  // 商的整数部分：被除数位数对应的商位（去前导0）
-  // 商的小数部分：取 places 位（截断显示），allDigits 多补了1位用于计算但不显示
+  // 商：整数部分 + places+1 位小数（截断，用于四舍五入判断）
   const qIntDigits = steps.slice(0, digits.length).map(s => String(s.q));
-  const qFracDigits = steps.slice(digits.length, digits.length + places).map(s => String(s.q));
+  const qFracDigits = steps.slice(digits.length, digits.length + places + 1).map(s => String(s.q));
   const qIntStr = qIntDigits.join("").replace(/^0+/, "") || "0";
-  // 去掉整数部分多余的前导0（如 "012" → "12"），小数部分精确 places 位
-  const quotientDisplay = qIntStr + "." + qFracDigits.join("").slice(0, places);
+  const quotientDisplay = qIntStr + "." + qFracDigits.join("");
   const quotientApprox = calcDivRound(dendInt, divisor, places);
-
-  // 4. 找第一步有效步（第一个 q>0）
   let firstValid = 0;
   for (let i = 0; i < steps.length; i++) {
     if (steps[i].q > 0) { firstValid = i; break; }
   }
-  const showSteps = steps.slice(firstValid, digits.length + places);
-
-  // 5. 生成 LaTeX — 注意 \\ 在 TS 模板字符串里 = 一个反斜杠，LaTeX 换行需要两个反斜杠即写 \\\\
+  const showSteps = steps.slice(firstValid, digits.length + places + 1);
   const qTex = quotientDisplay.replace(".", "{.}");
-  // 用普通字符串拼接 rows，避免嵌套转义混乱
+  // 减数用 \underline 包住，横线只覆盖数字本身宽度
   let rows = "";
   for (const s of showSteps) {
-    rows += "  " + s.brought + " \\\\\n";
-    rows += "  " + s.mul + " \\\\ \\hline\n";
+    rows += "  " + s.brought + " \\\\
+";
+    rows += "  \\underline{" + s.mul + "} \\\\
+";
   }
   if (showSteps.length > 0) {
-    rows += "  " + showSteps[showSteps.length - 1].rem + " \\\\\n";
+    rows += "  " + showSteps[showSteps.length - 1].rem + " \\\\
+";
   }
-
   const latex = "\\documentclass[border=10pt]{standalone}\n"
     + "\\usepackage{array}\n"
     + "\\usepackage{amsmath}\n"
@@ -162,9 +153,9 @@ function buildManualDivLatex(origDividend: number, origDivisor: number, places: 
     + rows
     + "\\end{tabular}\n"
     + "\\end{document}\n";
-
   return { latex, quotientDisplay, quotientApprox };
 }
+
 
 // ─── LaTeX Templates ──────────────────────────────────────────────────────────
 
