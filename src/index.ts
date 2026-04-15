@@ -128,30 +128,36 @@ function buildManualDivLatex(origDividend: number, origDivisor: number, places: 
   }
   const showSteps = steps.slice(firstValid, digits.length + places + 1);
   const qTex = quotientDisplay.replace(".", "{.}");
-  const NL = "\n";
-  const BS2 = "\\\\";
+  const BS = String.fromCharCode(92); // backslash
+  const NL = String.fromCharCode(10); // newline
   let rows = "";
   for (const s of showSteps) {
-    rows += "  " + s.brought + " " + BS2 + NL;
-    rows += "  \\underline{" + s.mul + "} " + BS2 + NL;
+    rows += "  " + s.brought + " " + BS + BS + NL;
+    rows += "  " + BS + "underline{" + s.mul + "} " + BS + BS + NL;
   }
   if (showSteps.length > 0) {
-    rows += "  " + showSteps[showSteps.length - 1].rem + " " + BS2 + NL;
+    rows += "  " + showSteps[showSteps.length - 1].rem + " " + BS + BS + NL;
   }
-  const qLine = "  \\multicolumn{1}{r}{$\\overline{\\smash{" + qTex + "}}$} " + BS2 + "[-2pt]" + NL;
-  const dLine = "  \\multicolumn{1}{l}{$" + divisor + "\\,)\\overline{" + dendInt + "}$} " + BS2 + "[1pt] \\hline" + NL;
-  const latex = "\\documentclass[border=10pt]{standalone}" + NL
-    + "\\usepackage{array}" + NL
-    + "\\usepackage{amsmath}" + NL
-    + "\\begin{document}" + NL
-    + "\\setlength{\\tabcolsep}{2pt}" + NL
-    + "\\renewcommand{\\arraystretch}{1.2}" + NL
-    + "\\begin{tabular}[t]{r}" + NL
+  const mc1r = BS + "multicolumn{1}{r}";
+  const mc1l = BS + "multicolumn{1}{l}";
+  const ovl = BS + "overline";
+  const smsh = BS + "smash";
+  const hln = BS + "hline";
+  const qLine = "  " + mc1r + "{$" + ovl + "{" + smsh + "{" + qTex + "}}$} " + BS + BS + "[-2pt]" + NL;
+  const dLine = "  " + mc1l + "{$" + divisor + BS + "," + ")" + ovl + "{" + dendInt + "}$} " + BS + BS + "[1pt] " + hln + NL;
+  const dc = BS + "documentclass[border=10pt]{standalone}";
+  const latex = dc + NL
+    + BS + "usepackage{array}" + NL
+    + BS + "usepackage{amsmath}" + NL
+    + BS + "begin{document}" + NL
+    + BS + "setlength{" + BS + "tabcolsep}{2pt}" + NL
+    + BS + "renewcommand{" + BS + "arraystretch}{1.2}" + NL
+    + BS + "begin{tabular}[t]{r}" + NL
     + qLine
     + dLine
     + rows
-    + "\\end{tabular}" + NL
-    + "\\end{document}" + NL;
+    + BS + "end{tabular}" + NL
+    + BS + "end{document}" + NL;
   return { latex, quotientDisplay, quotientApprox };
 }
 
