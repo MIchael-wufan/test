@@ -245,30 +245,38 @@ function parseSvg(svgPath: string): SvgInfo {
  *   svgPath → 插入该 SVG
  *   label   → 插入一行文字（渲染成 SVG 以获取真实宽度，避免截断）
  */
-function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: string, tmpDirsList: string[]): string {
+function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: string): string {
   const GAP = 2;          // pt，竖式块之间的间距（含 label 与竖式之间）；调大可增加各竖式间留白
   const BOTTOM_TRIM = 8;  // pt，每个 SVG 底部裁剪量（border=10pt，裁掉8pt使底部留白≈2pt）
 
-  // 解析所有块的尺寸：label 也先渲染成 SVG，获取真实宽度
-  const blocks: Array<{ type: "svg"; info: SvgInfo } | { type: "label"; info: SvgInfo }> = [];
+  // 解析所有块的尺寸：竖式 SVG 读取真实宽高，label 用 SVG text 直接绘制（避免中文 pdflatex 编译失败）
+  const LABEL_FONT_SIZE = 14; // px，label 文字大小
+  const LABEL_CHAR_WIDTH = 14; // px，每个字符估算宽度（中文字符比英文宽，取较大值）
+  const LABEL_HEIGHT_PT = 20;  // pt，label 行高
+
+  const blocks: Array<
+    { type: "svg"; info: SvgInfo } |
+    { type: "label"; text: string; widthPt: number; heightPt: number }
+  > = [];
+
   for (const item of items) {
     if (item.svgPath) {
       blocks.push({ type: "svg", info: parseSvg(item.svgPath) });
     } else if (item.label) {
-      // 渲染 label 文字为 SVG，获取真实宽度
-      const { svgPath: labelSvgPath, tmpDir: labelTmpDir } = renderToSvg(latexText(item.label));
-      tmpDirsList.push(labelTmpDir);
-      blocks.push({ type: "label", info: parseSvg(labelSvgPath) });
+      // 估算 label 宽度：字符数 × 每字符宽度，转换为 pt（1px ≈ 0.75pt）
+      const widthPt = (item.label.length * LABEL_CHAR_WIDTH) * 0.75;
+      blocks.push({ type: "label", text: item.label, widthPt, heightPt: LABEL_HEIGHT_PT });
     }
   }
 
-  // 所有块（包括 label）都参与宽度计算，取最大值
-  const maxWidth = blocks.length > 0 ? Math.max(...blocks.map(b => b.info.width)) : 200;
+  // 所有块都参与宽度计算，取最大值
+  const maxWidth = blocks.length > 0 ? Math.max(...blocks.map(b =>
+    b.type === "svg" ? b.info.width : b.widthPt
+  )) : 200;
 
   let totalHeight = 0;
   for (const b of blocks) {
-    // SVG 底部裁掉 BOTTOM_TRIM，减少底部多余留白
-    totalHeight += (b.info.height - BOTTOM_TRIM);
+    totalHeight += b.type === "svg" ? (b.info.height - BOTTOM_TRIM) : b.heightPt;
     totalHeight += GAP;
   }
   totalHeight -= GAP;
@@ -283,13 +291,20 @@ function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: s
   let svgIndex = 0;
 
   for (const b of blocks) {
-    const info = b.info;
-    const inner = extractSvgInner(info.content, svgIndex++);
-    const xOffset = (maxWidth - info.width) / 2; // 居中
-    const xPx = xOffset * PT_TO_PX;
-    const yPx = yOffset * PT_TO_PX;
-    innerSvg += `<g transform="translate(${xPx.toFixed(2)},${yPx.toFixed(2)})">\n${inner}\n</g>\n`;
-    yOffset += (info.height - BOTTOM_TRIM) + GAP;
+    if (b.type === "label") {
+      // 直接用 SVG <text> 绘制，支持中文，无需 pdflatex
+      const yText = (yOffset + b.heightPt * 0.75) * PT_TO_PX;
+      innerSvg += `<text x="0" y="${yText.toFixed(2)}" font-family="serif" font-size="${LABEL_FONT_SIZE * 1.2}" fill="black">${escapeXml(b.text)}</text>\n`;
+      yOffset += b.heightPt + GAP;
+    } else {
+      const info = b.info;
+      const inner = extractSvgInner(info.content, svgIndex++);
+      const xOffset = (maxWidth - info.width) / 2; // 居中
+      const xPx = xOffset * PT_TO_PX;
+      const yPx = yOffset * PT_TO_PX;
+      innerSvg += `<g transform="translate(${xPx.toFixed(2)},${yPx.toFixed(2)})">\n${inner}\n</g>\n`;
+      yOffset += (info.height - BOTTOM_TRIM) + GAP;
+    }
   }
 
   const merged = `<?xml version="1.0" encoding="UTF-8"?>
@@ -433,7 +448,7 @@ async function renderAndMerge(opts: RenderOptions, display: string): Promise<any
     // 3. 合并 SVG
     const mergeTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vcalc-merge-"));
     tmpDirs.push(mergeTmpDir);
-    const mergedPath = mergeSvgs(mergeItems, mergeTmpDir, tmpDirs);
+    const mergedPath = mergeSvgs(mergeItems, mergeTmpDir);
 
     // 4. 上传
     const url = await uploadToGitHub(mergedPath);
