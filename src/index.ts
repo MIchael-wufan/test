@@ -243,32 +243,32 @@ function parseSvg(svgPath: string): SvgInfo {
  * 把多个 SVG 纵向合并成一张，中间可插入文字标签
  * items: { svgPath?: string; label?: string }[]
  *   svgPath → 插入该 SVG
- *   label   → 插入一行文字（先渲染成 SVG）
+ *   label   → 插入一行文字（渲染成 SVG 以获取真实宽度，避免截断）
  */
-function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: string): string {
+function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: string, tmpDirsList: string[]): string {
   const GAP = 2;          // pt，竖式块之间的间距（含 label 与竖式之间）；调大可增加各竖式间留白
   const BOTTOM_TRIM = 8;  // pt，每个 SVG 底部裁剪量（border=10pt，裁掉8pt使底部留白≈2pt）
-  const LABEL_FONT_SIZE = 14;
-  const LABEL_HEIGHT = LABEL_FONT_SIZE + 6;
 
-  // 解析所有块的尺寸
-  const blocks: Array<{ type: "svg"; info: SvgInfo } | { type: "label"; text: string }> = [];
+  // 解析所有块的尺寸：label 也先渲染成 SVG，获取真实宽度
+  const blocks: Array<{ type: "svg"; info: SvgInfo } | { type: "label"; info: SvgInfo }> = [];
   for (const item of items) {
     if (item.svgPath) {
       blocks.push({ type: "svg", info: parseSvg(item.svgPath) });
     } else if (item.label) {
-      blocks.push({ type: "label", text: item.label });
+      // 渲染 label 文字为 SVG，获取真实宽度
+      const { svgPath: labelSvgPath, tmpDir: labelTmpDir } = renderToSvg(latexText(item.label));
+      tmpDirsList.push(labelTmpDir);
+      blocks.push({ type: "label", info: parseSvg(labelSvgPath) });
     }
   }
 
-  // 计算总尺寸：仅以竖式 SVG 宽度为准，不用 label 文字估算来撑宽
-  const svgWidths = blocks.filter(b => b.type === "svg").map(b => (b as any).info.width as number);
-  const maxWidth = svgWidths.length > 0 ? Math.max(...svgWidths) : 200;
+  // 所有块（包括 label）都参与宽度计算，取最大值
+  const maxWidth = blocks.length > 0 ? Math.max(...blocks.map(b => b.info.width)) : 200;
 
   let totalHeight = 0;
   for (const b of blocks) {
     // SVG 底部裁掉 BOTTOM_TRIM，减少底部多余留白
-    totalHeight += b.type === "svg" ? ((b as any).info.height - BOTTOM_TRIM) : LABEL_HEIGHT;
+    totalHeight += (b.info.height - BOTTOM_TRIM);
     totalHeight += GAP;
   }
   totalHeight -= GAP;
@@ -283,20 +283,13 @@ function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: s
   let svgIndex = 0;
 
   for (const b of blocks) {
-    if (b.type === "label") {
-      const yText = (yOffset + LABEL_HEIGHT * 0.75) * PT_TO_PX;
-      innerSvg += `<text x="0" y="${yText.toFixed(2)}" font-family="serif" font-size="${LABEL_FONT_SIZE}" fill="black">${escapeXml(b.text)}</text>\n`;
-      yOffset += LABEL_HEIGHT + GAP;
-    } else {
-      const info = (b as any).info as SvgInfo;
-      // 提取 SVG 内部内容（去掉外层 svg 标签，保留 defs + 内容），并给 id 加唯一前缀防止冲突
-      const inner = extractSvgInner(info.content, svgIndex++);
-      const xOffset = (maxWidth - info.width) / 2; // 居中
-      const xPx = xOffset * PT_TO_PX;
-      const yPx = yOffset * PT_TO_PX;
-      innerSvg += `<g transform="translate(${xPx.toFixed(2)},${yPx.toFixed(2)})">\n${inner}\n</g>\n`;
-      yOffset += (info.height - BOTTOM_TRIM) + GAP;
-    }
+    const info = b.info;
+    const inner = extractSvgInner(info.content, svgIndex++);
+    const xOffset = (maxWidth - info.width) / 2; // 居中
+    const xPx = xOffset * PT_TO_PX;
+    const yPx = yOffset * PT_TO_PX;
+    innerSvg += `<g transform="translate(${xPx.toFixed(2)},${yPx.toFixed(2)})">\n${inner}\n</g>\n`;
+    yOffset += (info.height - BOTTOM_TRIM) + GAP;
   }
 
   const merged = `<?xml version="1.0" encoding="UTF-8"?>
@@ -440,7 +433,7 @@ async function renderAndMerge(opts: RenderOptions, display: string): Promise<any
     // 3. 合并 SVG
     const mergeTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vcalc-merge-"));
     tmpDirs.push(mergeTmpDir);
-    const mergedPath = mergeSvgs(mergeItems, mergeTmpDir);
+    const mergedPath = mergeSvgs(mergeItems, mergeTmpDir, tmpDirs);
 
     // 4. 上传
     const url = await uploadToGitHub(mergedPath);
