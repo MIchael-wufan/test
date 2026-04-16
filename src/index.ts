@@ -342,10 +342,10 @@ function escapeXml(s: string): string {
 
 // ─── GitHub Upload ────────────────────────────────────────────────────────────
 
-async function uploadToGitHub(svgPath: string): Promise<string> {
+async function uploadToGitHub(svgPath: string, retries = 3): Promise<string> {
   if (!GITHUB_TOKEN) throw new Error("GITHUB_TOKEN not set");
-  // 时间戳 + 随机数，避免并发请求同毫秒内生成相同文件名导致 409 冲突
-  const filename = `vcalc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.svg`;
+  // 时间戳 + 随机数，确保每次上传文件名唯一，避免 SHA 冲突
+  const filename = `vcalc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.svg`;
   const content  = fs.readFileSync(svgPath).toString("base64");
   const payload  = JSON.stringify({
     message: `upload ${filename}`,
@@ -353,7 +353,7 @@ async function uploadToGitHub(svgPath: string): Promise<string> {
     branch: "main",
   });
 
-  return new Promise((resolve, reject) => {
+  const doUpload = (): Promise<string> => new Promise((resolve, reject) => {
     const req = https.request({
       hostname: "api.github.com",
       path: `/repos/${REPO_OWNER}/${REPO_NAME}/contents/images/${filename}`,
@@ -371,8 +371,16 @@ async function uploadToGitHub(svgPath: string): Promise<string> {
       res.on("data", c => data += c);
       res.on("end", () => {
         try {
-          const url = JSON.parse(data)?.content?.download_url;
-          url ? resolve(url) : reject(new Error(`Upload failed (${res.statusCode}): ${data.slice(0, 200)}`));
+          const parsed = JSON.parse(data);
+          const url = parsed?.content?.download_url;
+          if (url) {
+            resolve(url);
+          } else if (res.statusCode === 409 || res.statusCode === 422) {
+            // 409/422 冲突：重新生成文件名后重试（递归调用）
+            reject(new Error(`RETRY:${res.statusCode}:${data.slice(0, 100)}`));
+          } else {
+            reject(new Error(`Upload failed (${res.statusCode}): ${data.slice(0, 200)}`));
+          }
         } catch (e) {
           reject(new Error(`Parse error: ${data.slice(0, 200)}`));
         }
@@ -382,6 +390,20 @@ async function uploadToGitHub(svgPath: string): Promise<string> {
     req.write(payload);
     req.end();
   });
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await doUpload();
+    } catch (e: any) {
+      if (attempt < retries && e.message?.startsWith("RETRY:")) {
+        // 等待随机时长后重试，使用新文件名
+        await new Promise(r => setTimeout(r, 200 + Math.random() * 300));
+        return uploadToGitHub(svgPath, retries - attempt); // 递归以生成新文件名
+      }
+      throw e;
+    }
+  }
+  throw new Error("Upload failed after retries");
 }
 
 // ─── Core Render & Merge ──────────────────────────────────────────────────────
