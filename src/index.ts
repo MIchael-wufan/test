@@ -535,7 +535,7 @@ function setupHandlers(srv: Server) {
         const result = calcMul(mc, mr);
         const header = `${mc} × ${mr} = ${result}`;
         const items: RenderItem[] = [
-          { latex: latexXlop("opmul", String(mc), String(mr), "voperator=bottom") },
+          { latex: latexXlop("opmul", String(mc), String(mr)) },
         ];
         if (verify) {
           // 验算：result ÷ mr = mc
@@ -573,7 +573,7 @@ function setupHandlers(srv: Server) {
             const quotient = calcDivTrunc(newDividend, newDivisor, places);
             items2.push({
               label: "验算：",
-              latex: latexXlop("opmul", quotient, newDivisorStr, "voperator=bottom"),
+              latex: latexXlop("opmul", quotient, newDivisorStr),
             });
           }
           return renderAndMerge({ headerText: header, items: items2 }, `${dend}÷${dsor}`);
@@ -591,7 +591,7 @@ function setupHandlers(srv: Server) {
           const quotient = (Number(newDividend) / Number(newDivisor)).toFixed(2);
           items.push({
             label: "验算：",
-            latex: latexXlop("opmul", quotient, newDivisorStr, "voperator=bottom"),
+            latex: latexXlop("opmul", quotient, newDivisorStr),
           });
         }
         return renderAndMerge({ headerText: header, items }, `${dend}÷${dsor}`);
@@ -613,7 +613,7 @@ function setupHandlers(srv: Server) {
             // 验算：商 × 除数 = 被除数
             items.push({
               label: "验算：",
-              latex: latexXlop("opmul", String(quotient), String(dsor), "voperator=bottom"),
+              latex: latexXlop("opmul", String(quotient), String(dsor)),
             });
           } else {
             // 验算：商 × 除数 + 余数 = 被除数，分两步
@@ -621,7 +621,7 @@ function setupHandlers(srv: Server) {
             const step1 = quotient * dsor;
             items.push({
               label: "验算：",
-              latex: latexXlop("opmul", String(quotient), String(dsor), "voperator=bottom"),
+              latex: latexXlop("opmul", String(quotient), String(dsor)),
             });
             // 第二步：step1 + 余数
             items.push({
