@@ -228,7 +228,7 @@ function parseSvg(svgPath: string): SvgInfo {
  *   label   → 插入一行文字（先渲染成 SVG）
  */
 function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: string): string {
-  const GAP = 8; // pt，各块间距
+  const GAP = 2; // pt，各块间距
   const LABEL_FONT_SIZE = 14;
   const LABEL_HEIGHT = LABEL_FONT_SIZE + 6;
 
