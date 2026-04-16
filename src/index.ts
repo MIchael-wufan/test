@@ -344,7 +344,8 @@ function escapeXml(s: string): string {
 
 async function uploadToGitHub(svgPath: string): Promise<string> {
   if (!GITHUB_TOKEN) throw new Error("GITHUB_TOKEN not set");
-  const filename = `vcalc_${Date.now()}.svg`;
+  // 时间戳 + 随机数，避免并发请求同毫秒内生成相同文件名导致 409 冲突
+  const filename = `vcalc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.svg`;
   const content  = fs.readFileSync(svgPath).toString("base64");
   const payload  = JSON.stringify({
     message: `upload ${filename}`,
