@@ -122,7 +122,7 @@ function toIntDivisor(dividend: number, divisor: number): { newDividend: number;
 
 function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string, extraOpset = ""): string {
   const opsetBase = `decimalsepsymbol={.}${extraOpset ? "," + extraOpset : ""}`;
-  return `\\documentclass[border=2pt,12pt]{standalone}
+  return `\\documentclass[border={10pt 10pt 2pt 10pt},12pt]{standalone}
 \\usepackage{xlop}
 \\opset{${opsetBase}}
 \\begin{document}
@@ -133,7 +133,7 @@ function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string, extra
 
 function latexDivision(dividend: string, divisor: string): string {
   const keys = `separators in work=false`;
-  return `\\documentclass[border=2pt,12pt]{standalone}
+  return `\\documentclass[border={10pt 10pt 2pt 10pt},12pt]{standalone}
 \\usepackage{longdivision}
 \\longdivisionkeys{${keys}}
 \\begin{document}
@@ -143,7 +143,7 @@ function latexDivision(dividend: string, divisor: string): string {
 }
 
 function latexIntDivision(dividend: string, divisor: string): string {
-  return `\\documentclass[border=2pt,12pt]{standalone}
+  return `\\documentclass[border={10pt 10pt 2pt 10pt},12pt]{standalone}
 \\usepackage{longdivision}
 \\longdivisionkeys{separators in work=false}
 \\begin{document}
@@ -160,7 +160,7 @@ function latexText(text: string): string {
     .replace(/÷/g, "$\\div$")
     .replace(/×/g, "$\\times$")
     .replace(/……/g, "\\ldots\\ldots");
-  return `\\documentclass[border=2pt]{standalone}
+  return `\\documentclass[border={10pt 10pt 2pt 10pt}]{standalone}
 \\usepackage{amsmath}
 \\begin{document}
 \\large ${escaped}
