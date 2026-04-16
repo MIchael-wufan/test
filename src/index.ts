@@ -245,41 +245,63 @@ function parseSvg(svgPath: string): SvgInfo {
  *   svgPath → 插入该 SVG
  *   label   → 插入一行文字（渲染成 SVG 以获取真实宽度，避免截断）
  */
-function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: string): string {
+function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: string, tmpDirsRef: string[]): string {
   const GAP = 2;          // pt，竖式块之间的间距（含 label 与竖式之间）；调大可增加各竖式间留白
   const BOTTOM_TRIM = 8;  // pt，每个 SVG 底部裁剪量（border=10pt，裁掉8pt使底部留白≈2pt）
 
-  // 解析所有块的尺寸：竖式 SVG 读取真实宽高，label 用 SVG text 直接绘制（避免中文 pdflatex 编译失败）
-  const LABEL_FONT_SIZE = 14; // px，label 文字大小
-  const LABEL_CHAR_WIDTH = 14; // px，每个字符估算宽度（中文字符比英文宽，取较大值）
+  const LABEL_FONT_SIZE = 14; // px，label 文字大小（SVG text 用）
   const LABEL_HEIGHT_PT = 20;  // pt，label 行高
+
+  // 判断是否含中文（含中文则用 SVG text 估算宽度，否则用 LaTeX 渲染取真实宽度）
+  function hasChinese(s: string): boolean {
+    return /[\u4e00-\u9fff\uff00-\uffef]/.test(s);
+  }
 
   const blocks: Array<
     { type: "svg"; info: SvgInfo } |
-    { type: "label"; text: string; widthPt: number; heightPt: number }
+    { type: "label-svg"; info: SvgInfo } |          // 纯 ASCII label，LaTeX 渲染，宽度精确
+    { type: "label-text"; text: string; widthPt: number; heightPt: number }  // 含中文，SVG text
   > = [];
 
   for (const item of items) {
     if (item.svgPath) {
       blocks.push({ type: "svg", info: parseSvg(item.svgPath) });
     } else if (item.label) {
-      // 估算 label 宽度：字符数 × 每字符宽度，转换为 pt（1px ≈ 0.75pt）
-      const widthPt = (item.label.length * LABEL_CHAR_WIDTH) * 0.75;
-      blocks.push({ type: "label", text: item.label, widthPt, heightPt: LABEL_HEIGHT_PT });
+      if (hasChinese(item.label)) {
+        // 含中文：SVG text 绘制，宽度按字符数估算（中文字符约16px，数字/字母约10px）
+        let widthPx = 0;
+        for (const ch of item.label) {
+          widthPx += /[\u4e00-\u9fff\uff00-\uffef]/.test(ch) ? 18 : 11;
+        }
+        const widthPt = widthPx * 0.75;
+        blocks.push({ type: "label-text", text: item.label, widthPt, heightPt: LABEL_HEIGHT_PT });
+      } else {
+        // 纯 ASCII（算式）：LaTeX 渲染取真实宽度
+        const { svgPath: lsvgPath, tmpDir: lTmpDir } = renderToSvg(latexText(item.label));
+        tmpDirsRef.push(lTmpDir);
+        blocks.push({ type: "label-svg", info: parseSvg(lsvgPath) });
+      }
     }
   }
 
-  // 竖式左边固定留 20pt，画布宽 = 竖式最大宽 + 20pt 左边距，label 左对齐从 0 开始
-  const SVG_LEFT_MARGIN = 20; // pt，竖式左边距，保证内容不被截断
+  // 画布宽 = 所有块宽度的最大值（竖式 + label 全部参与），保证不截断
+  const allWidths = blocks.map(b => {
+    if (b.type === "svg" || b.type === "label-svg") return b.info.width;
+    return b.widthPt;
+  });
+  const canvasWidth = Math.max(...allWidths, 50);
+
+  // 竖式最大宽（用于竖式居中）
   const svgMaxWidth = Math.max(
     ...blocks.filter(b => b.type === "svg").map(b => (b as any).info.width as number),
     50
   );
-  const canvasWidth = svgMaxWidth + SVG_LEFT_MARGIN;
 
   let totalHeight = 0;
   for (const b of blocks) {
-    totalHeight += b.type === "svg" ? (b.info.height - BOTTOM_TRIM) : b.heightPt;
+    if (b.type === "svg") totalHeight += b.info.height - BOTTOM_TRIM;
+    else if (b.type === "label-svg") totalHeight += b.info.height - BOTTOM_TRIM;
+    else totalHeight += b.heightPt;
     totalHeight += GAP;
   }
   totalHeight -= GAP;
@@ -294,16 +316,22 @@ function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: s
   let svgIndex = 0;
 
   for (const b of blocks) {
-    if (b.type === "label") {
-      // label 左对齐，从 x=0 开始
+    if (b.type === "label-text") {
+      // 含中文 label：SVG text 左对齐
       const yText = (yOffset + b.heightPt * 0.75) * PT_TO_PX;
       innerSvg += `<text x="0" y="${yText.toFixed(2)}" font-family="serif" font-size="${LABEL_FONT_SIZE * 1.2}" fill="black">${escapeXml(b.text)}</text>\n`;
       yOffset += b.heightPt + GAP;
+    } else if (b.type === "label-svg") {
+      // 纯 ASCII label：LaTeX SVG，左对齐
+      const inner = extractSvgInner(b.info.content, svgIndex++);
+      const yPx = yOffset * PT_TO_PX;
+      innerSvg += `<g transform="translate(0,${yPx.toFixed(2)})">\n${inner}\n</g>\n`;
+      yOffset += (b.info.height - BOTTOM_TRIM) + GAP;
     } else {
+      // 竖式：在画布中居中
       const info = b.info;
       const inner = extractSvgInner(info.content, svgIndex++);
-      // 竖式固定左边距 20pt，各竖式在剩余宽度内居中
-      const xOffset = SVG_LEFT_MARGIN + (svgMaxWidth - info.width) / 2;
+      const xOffset = (canvasWidth - info.width) / 2;
       const xPx = xOffset * PT_TO_PX;
       const yPx = yOffset * PT_TO_PX;
       innerSvg += `<g transform="translate(${xPx.toFixed(2)},${yPx.toFixed(2)})">\n${inner}\n</g>\n`;
@@ -452,7 +480,7 @@ async function renderAndMerge(opts: RenderOptions, display: string): Promise<any
     // 3. 合并 SVG
     const mergeTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "vcalc-merge-"));
     tmpDirs.push(mergeTmpDir);
-    const mergedPath = mergeSvgs(mergeItems, mergeTmpDir);
+    const mergedPath = mergeSvgs(mergeItems, mergeTmpDir, tmpDirs);
 
     // 4. 上传
     const url = await uploadToGitHub(mergedPath);
