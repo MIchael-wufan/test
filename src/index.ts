@@ -269,10 +269,17 @@ function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: s
     }
   }
 
-  // 所有块都参与宽度计算，取最大值
-  const maxWidth = blocks.length > 0 ? Math.max(...blocks.map(b =>
-    b.type === "svg" ? b.info.width : b.widthPt
-  )) : 200;
+  // 竖式宽度（用于竖式居中基准）和 label 宽度分开计算
+  const svgMaxWidth = Math.max(
+    ...blocks.filter(b => b.type === "svg").map(b => (b as any).info.width as number),
+    50
+  );
+  const labelMaxWidth = Math.max(
+    ...blocks.filter(b => b.type === "label").map(b => (b as any).widthPt as number),
+    0
+  );
+  // 画布总宽取两者最大值；竖式相对 svgMaxWidth 居中，label 左对齐
+  const canvasWidth = Math.max(svgMaxWidth, labelMaxWidth);
 
   let totalHeight = 0;
   for (const b of blocks) {
@@ -283,7 +290,7 @@ function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: s
 
   // 生成合并 SVG
   const PT_TO_PX = 1.333;
-  const wPx = maxWidth * PT_TO_PX;
+  const wPx = canvasWidth * PT_TO_PX;
   const hPx = totalHeight * PT_TO_PX;
 
   let innerSvg = "";
@@ -292,14 +299,16 @@ function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: s
 
   for (const b of blocks) {
     if (b.type === "label") {
-      // 直接用 SVG <text> 绘制，支持中文，无需 pdflatex
+      // label 左对齐，直接从 x=0 开始
       const yText = (yOffset + b.heightPt * 0.75) * PT_TO_PX;
       innerSvg += `<text x="0" y="${yText.toFixed(2)}" font-family="serif" font-size="${LABEL_FONT_SIZE * 1.2}" fill="black">${escapeXml(b.text)}</text>\n`;
       yOffset += b.heightPt + GAP;
     } else {
       const info = b.info;
       const inner = extractSvgInner(info.content, svgIndex++);
-      const xOffset = (maxWidth - info.width) / 2; // 居中
+      // 竖式相对于 svgMaxWidth 居中，再加上 label 可能更宽时的偏移
+      const svgAreaOffset = (canvasWidth - svgMaxWidth) / 2;
+      const xOffset = svgAreaOffset + (svgMaxWidth - info.width) / 2;
       const xPx = xOffset * PT_TO_PX;
       const yPx = yOffset * PT_TO_PX;
       innerSvg += `<g transform="translate(${xPx.toFixed(2)},${yPx.toFixed(2)})">\n${inner}\n</g>\n`;
