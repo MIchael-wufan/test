@@ -121,8 +121,8 @@ function toIntDivisor(dividend: number, divisor: number): { newDividend: number;
 // ─── LaTeX Templates ──────────────────────────────────────────────────────────
 
 function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string, extraOpset = ""): string {
-  const opsetBase = `decimalsepsymbol={.},size=\\large${extraOpset ? "," + extraOpset : ""}`;
-  return `\\documentclass[border=10pt]{standalone}
+  const opsetBase = `decimalsepsymbol={.}${extraOpset ? "," + extraOpset : ""}`;
+  return `\\documentclass[border=10pt,12pt]{standalone}
 \\usepackage{xlop}
 \\opset{${opsetBase}}
 \\begin{document}
@@ -133,21 +133,21 @@ function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string, extra
 
 function latexDivision(dividend: string, divisor: string): string {
   const keys = `separators in work=false`;
-  return `\\documentclass[border=10pt]{standalone}
+  return `\\documentclass[border=10pt,12pt]{standalone}
 \\usepackage{longdivision}
 \\longdivisionkeys{${keys}}
 \\begin{document}
-{\\large\\longdivision{${dividend}}{${divisor}}}
+\\longdivision{${dividend}}{${divisor}}
 \\end{document}
 `;
 }
 
 function latexIntDivision(dividend: string, divisor: string): string {
-  return `\\documentclass[border=10pt]{standalone}
+  return `\\documentclass[border=10pt,12pt]{standalone}
 \\usepackage{longdivision}
 \\longdivisionkeys{separators in work=false}
 \\begin{document}
-{\\large\\intlongdivision{${dividend}}{${divisor}}}
+\\intlongdivision{${dividend}}{${divisor}}
 \\end{document}
 `;
 }
