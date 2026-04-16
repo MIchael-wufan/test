@@ -124,13 +124,12 @@ function toIntDivisor(dividend: number, divisor: number): { newDividend: number;
  * ┌─────────────────────────────────────────────────────────────────┐
  * │                      边距配置说明                                 │
  * │                                                                  │
- * │  border={左 下 右 上}  ← standalone 的顺序（逆时针，从左开始）     │
+ * │  border=Xpt  ← 单值，四个方向均等边距（最稳定，避免方向顺序歧义）   │
  * │                                                                  │
- * │  当前值：border={10pt 2pt 10pt 10pt}                             │
- * │    左  = 10pt  ← 左边距                                          │
- * │    下  =  2pt  ← 下边距（调小以减少竖式底部留白）                   │
- * │    右  = 10pt  ← 右边距                                          │
- * │    上  = 10pt  ← 上边距                                          │
+ * │  当前值：border=10pt（四边均等）                                   │
+ * │                                                                  │
+ * │  底部视觉留白通过 mergeSvgs() 的 BOTTOM_TRIM 常量裁剪              │
+ * │  BOTTOM_TRIM = 8pt：合并时每个 SVG 底部减去 8pt，抵消多余边距       │
  * │                                                                  │
  * │  字号：12pt（通过 documentclass 选项控制，不影响 xlop 内部排版）    │
  * │                                                                  │
@@ -140,7 +139,7 @@ function toIntDivisor(dividend: number, divisor: number): { newDividend: number;
 
 function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string, extraOpset = ""): string {
   const opsetBase = `decimalsepsymbol={.}${extraOpset ? "," + extraOpset : ""}`;
-  return `\\documentclass[border={10pt 2pt 10pt 10pt},12pt]{standalone}
+  return `\\documentclass[border=10pt,12pt]{standalone}
 \\usepackage{xlop}
 \\opset{${opsetBase}}
 \\begin{document}
@@ -151,7 +150,7 @@ function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string, extra
 
 function latexDivision(dividend: string, divisor: string): string {
   const keys = `separators in work=false`;
-  return `\\documentclass[border={10pt 2pt 10pt 10pt},12pt]{standalone}
+  return `\\documentclass[border=10pt,12pt]{standalone}
 \\usepackage{longdivision}
 \\longdivisionkeys{${keys}}
 \\begin{document}
@@ -161,7 +160,7 @@ function latexDivision(dividend: string, divisor: string): string {
 }
 
 function latexIntDivision(dividend: string, divisor: string): string {
-  return `\\documentclass[border={10pt 2pt 10pt 10pt},12pt]{standalone}
+  return `\\documentclass[border=10pt,12pt]{standalone}
 \\usepackage{longdivision}
 \\longdivisionkeys{separators in work=false}
 \\begin{document}
@@ -179,7 +178,7 @@ function latexText(text: string): string {
     .replace(/×/g, "$\\times$")
     .replace(/……/g, "\\ldots\\ldots");
   // border 同上，但文字标签不需要指定字号（用 \large 内联控制）
-  return `\\documentclass[border={10pt 2pt 10pt 10pt}]{standalone}
+  return `\\documentclass[border=10pt]{standalone}
 \\usepackage{amsmath}
 \\begin{document}
 \\large ${escaped}
@@ -247,7 +246,8 @@ function parseSvg(svgPath: string): SvgInfo {
  *   label   → 插入一行文字（先渲染成 SVG）
  */
 function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: string): string {
-  const GAP = 2; // pt，竖式块之间的间距（含 label 与竖式之间）；调大可增加各竖式间留白
+  const GAP = 2;          // pt，竖式块之间的间距（含 label 与竖式之间）；调大可增加各竖式间留白
+  const BOTTOM_TRIM = 8;  // pt，每个 SVG 底部裁剪量（border=10pt，裁掉8pt使底部留白≈2pt）
   const LABEL_FONT_SIZE = 14;
   const LABEL_HEIGHT = LABEL_FONT_SIZE + 6;
 
@@ -267,7 +267,8 @@ function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: s
 
   let totalHeight = 0;
   for (const b of blocks) {
-    totalHeight += b.type === "svg" ? (b as any).info.height : LABEL_HEIGHT;
+    // SVG 底部裁掉 BOTTOM_TRIM，减少底部多余留白
+    totalHeight += b.type === "svg" ? ((b as any).info.height - BOTTOM_TRIM) : LABEL_HEIGHT;
     totalHeight += GAP;
   }
   totalHeight -= GAP;
@@ -294,7 +295,7 @@ function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: s
       const xPx = xOffset * PT_TO_PX;
       const yPx = yOffset * PT_TO_PX;
       innerSvg += `<g transform="translate(${xPx.toFixed(2)},${yPx.toFixed(2)})">\n${inner}\n</g>\n`;
-      yOffset += info.height + GAP;
+      yOffset += (info.height - BOTTOM_TRIM) + GAP;
     }
   }
 
