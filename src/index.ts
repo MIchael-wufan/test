@@ -148,6 +148,31 @@ function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string, extra
 `;
 }
 
+/**
+ * 生成"移小数点留痕"行的 LaTeX：
+ * 在除数和被除数的小数点上画删除线，右边显示移位后的整数形式
+ * 例：3.14 ÷ 2.5  →  $3\sout{.}14 \div 2\sout{.}5 \longrightarrow 314 \div 25$
+ * shift: 移动位数（即 toIntDivisor 返回的 shift）
+ */
+function latexDecimalShiftHint(
+  origDividend: string, origDivisor: string,
+  newDividendStr: string, newDivisorStr: string
+): string {
+  // 把小数点替换成 \sout{.}（划线）
+  function strikeoutDot(s: string): string {
+    return s.replace(".", "\\sout{.}");
+  }
+  const dend = strikeoutDot(origDividend);
+  const dsor = strikeoutDot(origDivisor);
+  return `\\documentclass[border=10pt,12pt]{standalone}
+\\usepackage{ulem}
+\\normalem
+\\begin{document}
+$${dend} \\div ${dsor} \\longrightarrow ${newDividendStr} \\div ${newDivisorStr}$
+\\end{document}
+`;
+}
+
 function latexDivision(dividend: string, divisor: string): string {
   const keys = `separators in work=false`;
   return `\\documentclass[border=10pt,12pt]{standalone}
@@ -639,7 +664,10 @@ function setupHandlers(srv: Server) {
         const places = args.decimalPlaces as number | undefined;
 
         // 小数除数转整数：移位法（精确字符串实现）
-        const { newDividend, newDivisor, newDividendStr, newDivisorStr } = toIntDivisor(dend, dsor);
+        const { newDividend, newDivisor, newDividendStr, newDivisorStr, shift } = toIntDivisor(dend, dsor);
+
+        // 是否需要插入移位留痕（仅当除数含小数点时）
+        const needShiftHint = shift > 0;
 
         let header: string;
 
@@ -647,11 +675,12 @@ function setupHandlers(srv: Server) {
           // 保留 places 位，计算到 places+1 位截断
           const roundResult = calcDivRound(newDividend, newDivisor, places);
           header = `${dend} ÷ ${dsor} ≈ ${roundResult}`;
-          // 将被除数格式化为 places+1 位小数传给 LaTeX，使 longdivision 自然在该位停止
           const dendForLatex = parseFloat(newDividendStr).toFixed(places + 1);
-          const items2: RenderItem[] = [
-            { latex: latexDivision(dendForLatex, newDivisorStr) },
-          ];
+          const items2: RenderItem[] = [];
+          if (needShiftHint) {
+            items2.push({ latex: latexDecimalShiftHint(String(dend), String(dsor), newDividendStr, newDivisorStr) });
+          }
+          items2.push({ latex: latexDivision(dendForLatex, newDivisorStr) });
           if (verify) {
             const quotient = calcDivTrunc(newDividend, newDivisor, places);
             items2.push({
@@ -666,11 +695,12 @@ function setupHandlers(srv: Server) {
           header = `${dend} ÷ ${dsor} = ${result.toFixed(d)}`;
         }
 
-        const items: RenderItem[] = [
-          { latex: latexDivision(newDividendStr, newDivisorStr) },
-        ];
+        const items: RenderItem[] = [];
+        if (needShiftHint) {
+          items.push({ latex: latexDecimalShiftHint(String(dend), String(dsor), newDividendStr, newDivisorStr) });
+        }
+        items.push({ latex: latexDivision(newDividendStr, newDivisorStr) });
         if (verify) {
-          // 验算：商 × 除数 = 被除数
           const quotient = (Number(newDividend) / Number(newDivisor)).toFixed(2);
           items.push({
             label: "验算：",
