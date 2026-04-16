@@ -121,12 +121,12 @@ function toIntDivisor(dividend: number, divisor: number): { newDividend: number;
 // ─── LaTeX Templates ──────────────────────────────────────────────────────────
 
 function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string, extraOpset = ""): string {
-  const opsetBase = `decimalsepsymbol={.}${extraOpset ? "," + extraOpset : ""}`;
+  const opsetBase = `decimalsepsymbol={.},size=\\large${extraOpset ? "," + extraOpset : ""}`;
   return `\\documentclass[border=10pt]{standalone}
 \\usepackage{xlop}
 \\opset{${opsetBase}}
 \\begin{document}
-{\\large\\${cmd}{${a}}{${b}}}
+\\${cmd}{${a}}{${b}}
 \\end{document}
 `;
 }
@@ -535,7 +535,7 @@ function setupHandlers(srv: Server) {
         const result = calcMul(mc, mr);
         const header = `${mc} × ${mr} = ${result}`;
         const items: RenderItem[] = [
-          { latex: latexXlop("opmul", String(mc), String(mr)) },
+          { latex: latexXlop("opmul", String(mc), String(mr), "voperator=bottom") },
         ];
         if (verify) {
           // 验算：result ÷ mr = mc
@@ -573,7 +573,7 @@ function setupHandlers(srv: Server) {
             const quotient = calcDivTrunc(newDividend, newDivisor, places);
             items2.push({
               label: "验算：",
-              latex: latexXlop("opmul", quotient, newDivisorStr),
+              latex: latexXlop("opmul", quotient, newDivisorStr, "voperator=bottom"),
             });
           }
           return renderAndMerge({ headerText: header, items: items2 }, `${dend}÷${dsor}`);
@@ -591,7 +591,7 @@ function setupHandlers(srv: Server) {
           const quotient = (Number(newDividend) / Number(newDivisor)).toFixed(2);
           items.push({
             label: "验算：",
-            latex: latexXlop("opmul", quotient, newDivisorStr),
+            latex: latexXlop("opmul", quotient, newDivisorStr, "voperator=bottom"),
           });
         }
         return renderAndMerge({ headerText: header, items }, `${dend}÷${dsor}`);
@@ -613,7 +613,7 @@ function setupHandlers(srv: Server) {
             // 验算：商 × 除数 = 被除数
             items.push({
               label: "验算：",
-              latex: latexXlop("opmul", String(quotient), String(dsor)),
+              latex: latexXlop("opmul", String(quotient), String(dsor), "voperator=bottom"),
             });
           } else {
             // 验算：商 × 除数 + 余数 = 被除数，分两步
@@ -621,7 +621,7 @@ function setupHandlers(srv: Server) {
             const step1 = quotient * dsor;
             items.push({
               label: "验算：",
-              latex: latexXlop("opmul", String(quotient), String(dsor)),
+              latex: latexXlop("opmul", String(quotient), String(dsor), "voperator=bottom"),
             });
             // 第二步：step1 + 余数
             items.push({
