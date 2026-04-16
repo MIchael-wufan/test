@@ -173,6 +173,139 @@ $${dend} \\div ${dsor} \\longrightarrow ${newDividendStr} \\div ${newDivisorStr}
 `;
 }
 
+/**
+ * 在竖式 SVG 内容中，根据 shift 在除数和被除数的原小数点位置插入删除线标记。
+ * longdivision 渲染出的竖式结构：
+ *   - 较大 y 行（topY）：包含除数（左侧）、除号、被除数（右侧）
+ *   - 较小 y 行：商
+ * 方法：
+ *   1. 找到最小路径的 glyph（小数点字形）
+ *   2. 找竖式第二行（除数+被除数所在行）的所有字符及 x 坐标
+ *   3. 按 x 分段：x < 除号x → 除数字符；x > 除号x → 被除数字符
+ *   4. 根据 shift 在对应位置后插入小圆点+斜线
+ *
+ * origDivisor: 原始除数字符串（含小数点，如 "2.5"）
+ * origDividend: 原始被除数字符串（含小数点，如 "3.14"）
+ * svgContent: 原始竖式 SVG 字符串
+ */
+function addDecimalStrikethrough(svgContent: string, origDivisor: string, origDividend: string): string {
+  // 只有除数含小数点时才处理
+  const divisorDotIdx = origDivisor.indexOf(".");
+  if (divisorDotIdx === -1) return svgContent;
+
+  const dividendDotIdx = origDividend.indexOf(".");
+
+  // 找最短 path 的 glyph（小数点）
+  const glyphPaths: Array<{ id: string; pathLen: number }> = [];
+  const symbolMatches = [...svgContent.matchAll(/<symbol[^>]+id="([^"]+)"[^>]*>([\s\S]*?)<\/symbol>/g)];
+  for (const m of symbolMatches) {
+    const gid = m[1];
+    const pathMatch = m[2].match(/d="([^"]+)"/);
+    if (pathMatch) {
+      glyphPaths.push({ id: gid, pathLen: pathMatch[1].length });
+    }
+  }
+  if (glyphPaths.length === 0) return svgContent;
+  // 小数点是 path 最短的非空 glyph（通常 ~240 chars）
+  glyphPaths.sort((a, b) => a.pathLen - b.pathLen);
+  const dotGlyphId = glyphPaths[0].id;
+
+  // 找所有 use 元素，按 y 值分组
+  const useMatches = [...svgContent.matchAll(/<use xlink:href="#([^"]+)" x="([0-9.]+)" y="([0-9.]+)"\/>/g)];
+  if (useMatches.length === 0) return svgContent;
+
+  // 收集所有 y 值
+  const ySet = new Set<number>();
+  for (const m of useMatches) {
+    ySet.add(parseFloat(m[3]));
+  }
+  const ySorted = [...ySet].sort((a, b) => a - b);
+  // longdivision: 最小 y = 商行，第二小 y = 被除数行（含除数+除号+被除数）
+  // 有时候除数在单独一行，需要找包含最多字符的行
+  // 简单策略：取字符最多的那一行（通常是被除数行）
+  const yCount = new Map<number, number>();
+  for (const m of useMatches) {
+    const y = parseFloat(m[3]);
+    yCount.set(y, (yCount.get(y) || 0) + 1);
+  }
+  // 取字符最多的行
+  let topRowY = ySorted[0];
+  let maxCount = 0;
+  for (const [y, cnt] of yCount) {
+    if (cnt > maxCount) { maxCount = cnt; topRowY = y; }
+  }
+
+  // 找该行所有字符的 x 坐标，按 x 排序
+  const topRowUses: Array<{ x: number; glyph: string }> = [];
+  for (const m of useMatches) {
+    if (Math.abs(parseFloat(m[3]) - topRowY) < 1) {
+      topRowUses.push({ x: parseFloat(m[2]), glyph: m[1] });
+    }
+  }
+  topRowUses.sort((a, b) => a.x - b.x);
+
+  if (topRowUses.length === 0) return svgContent;
+
+  // 估算字符宽度（相邻字符 x 差的中位数）
+  const xDiffs: number[] = [];
+  for (let i = 1; i < topRowUses.length; i++) {
+    const d = topRowUses[i].x - topRowUses[i - 1].x;
+    if (d > 1 && d < 20) xDiffs.push(d);
+  }
+  xDiffs.sort((a, b) => a - b);
+  const charWidth = xDiffs.length > 0 ? xDiffs[Math.floor(xDiffs.length / 2)] : 6;
+  const dotRadius = charWidth * 0.15;  // 小数点圆点半径
+  const dotCy = topRowY - charWidth * 0.12;  // 小数点垂直位置（基线附近）
+
+  // 找除号位置（最大 x 间距处，即除数和被除数之间的空白）
+  let dividerX = topRowUses[0].x;
+  let maxGap = 0;
+  for (let i = 1; i < topRowUses.length; i++) {
+    const gap = topRowUses[i].x - topRowUses[i - 1].x;
+    if (gap > maxGap) {
+      maxGap = gap;
+      dividerX = (topRowUses[i].x + topRowUses[i - 1].x) / 2;
+    }
+  }
+
+  // 分离除数字符和被除数字符
+  const divisorChars = topRowUses.filter(u => u.x < dividerX);
+  const dividendChars = topRowUses.filter(u => u.x > dividerX);
+
+  // 要插入的删除线列表
+  const strikethroughs: Array<{ cx: number }> = [];
+
+  // 除数：原除数小数点在第 divisorDotIdx 位后
+  // divisorChars[divisorDotIdx - 1] 是小数点前最后一个数字
+  if (divisorDotIdx > 0 && divisorDotIdx <= divisorChars.length) {
+    const prevChar = divisorChars[divisorDotIdx - 1];
+    // 小数点位置 = 前一个字符 x + 字符宽度
+    const dotX = prevChar.x + charWidth;
+    strikethroughs.push({ cx: dotX });
+  }
+
+  // 被除数：原被除数小数点在第 dividendDotIdx 位后
+  if (dividendDotIdx > 0 && dividendDotIdx <= dividendChars.length) {
+    const prevChar = dividendChars[dividendDotIdx - 1];
+    const dotX = prevChar.x + charWidth;
+    strikethroughs.push({ cx: dotX });
+  }
+
+  // 生成 SVG 删除线元素（小圆点 + 斜线）
+  let strikeEl = "";
+  for (const { cx } of strikethroughs) {
+    const r = dotRadius;
+    const lineHalf = r * 2.5;
+    strikeEl += `<circle cx="${cx.toFixed(2)}" cy="${dotCy.toFixed(2)}" r="${r.toFixed(2)}" fill="black"/>\n`;
+    strikeEl += `<line x1="${(cx - lineHalf).toFixed(2)}" y1="${(dotCy + lineHalf).toFixed(2)}" x2="${(cx + lineHalf).toFixed(2)}" y2="${(dotCy - lineHalf).toFixed(2)}" stroke="black" stroke-width="0.8"/>\n`;
+  }
+
+  if (!strikeEl) return svgContent;
+
+  // 插入到 </svg> 之前
+  return svgContent.replace(/<\/svg>/, strikeEl + "</svg>");
+}
+
 function latexDivision(dividend: string, divisor: string): string {
   const keys = `separators in work=false`;
   return `\\documentclass[border=10pt,12pt]{standalone}
@@ -477,6 +610,7 @@ async function uploadToGitHub(svgPath: string, retries = 3): Promise<string> {
 interface RenderItem {
   latex: string;
   label?: string; // 在这张图前插入的文字标签（如"验算："）
+  postProcess?: (svgContent: string) => string; // SVG 后处理钩子（如添加删除线）
 }
 
 interface RenderOptions {
@@ -499,6 +633,12 @@ async function renderAndMerge(opts: RenderOptions, display: string): Promise<any
       }
       const { svgPath, tmpDir } = renderToSvg(item.latex);
       tmpDirs.push(tmpDir);
+      // 如果有后处理钩子（如小数点删除线），修改 SVG 文件内容
+      if (item.postProcess) {
+        const original = fs.readFileSync(svgPath, "utf-8");
+        const processed = item.postProcess(original);
+        fs.writeFileSync(svgPath, processed, "utf-8");
+      }
       mergeItems.push({ svgPath });
     }
 
@@ -676,11 +816,11 @@ function setupHandlers(srv: Server) {
           const roundResult = calcDivRound(newDividend, newDivisor, places);
           header = `${dend} ÷ ${dsor} ≈ ${roundResult}`;
           const dendForLatex = parseFloat(newDividendStr).toFixed(places + 1);
-          const items2: RenderItem[] = [];
+          const mainItem: RenderItem = { latex: latexDivision(dendForLatex, newDivisorStr) };
           if (needShiftHint) {
-            items2.push({ latex: latexDecimalShiftHint(String(dend), String(dsor), newDividendStr, newDivisorStr) });
+            mainItem.postProcess = (svg) => addDecimalStrikethrough(svg, String(dsor), String(dend));
           }
-          items2.push({ latex: latexDivision(dendForLatex, newDivisorStr) });
+          const items2: RenderItem[] = [mainItem];
           if (verify) {
             const quotient = calcDivTrunc(newDividend, newDivisor, places);
             items2.push({
@@ -695,11 +835,11 @@ function setupHandlers(srv: Server) {
           header = `${dend} ÷ ${dsor} = ${result.toFixed(d)}`;
         }
 
-        const items: RenderItem[] = [];
+        const mainItem: RenderItem = { latex: latexDivision(newDividendStr, newDivisorStr) };
         if (needShiftHint) {
-          items.push({ latex: latexDecimalShiftHint(String(dend), String(dsor), newDividendStr, newDivisorStr) });
+          mainItem.postProcess = (svg) => addDecimalStrikethrough(svg, String(dsor), String(dend));
         }
-        items.push({ latex: latexDivision(newDividendStr, newDivisorStr) });
+        const items: RenderItem[] = [mainItem];
         if (verify) {
           const quotient = (Number(newDividend) / Number(newDivisor)).toFixed(2);
           items.push({
