@@ -269,13 +269,17 @@ function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: s
     }
   }
 
-  // 竖式宽度决定画布宽度和居中基准
+  // 竖式宽度决定居中基准；画布宽度取竖式和 label 的最大值，防止 label 被截断
   const svgMaxWidth = Math.max(
     ...blocks.filter(b => b.type === "svg").map(b => (b as any).info.width as number),
     50
   );
-  // 画布宽度只由竖式决定，label 不影响（label 左对齐，超出画布也无妨）
-  const canvasWidth = svgMaxWidth;
+  const labelMaxWidth = Math.max(
+    ...blocks.filter(b => b.type === "label").map(b => (b as any).widthPt as number),
+    0
+  );
+  // 画布宽 = 竖式和 label 的最大值（label 不截断）；竖式居中于画布，label 左对齐
+  const canvasWidth = Math.max(svgMaxWidth, labelMaxWidth);
 
   let totalHeight = 0;
   for (const b of blocks) {
@@ -302,8 +306,8 @@ function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: s
     } else {
       const info = b.info;
       const inner = extractSvgInner(info.content, svgIndex++);
-      // 竖式在画布中居中
-      const xOffset = (svgMaxWidth - info.width) / 2;
+      // 竖式居中于画布（画布可能因 label 更宽而扩展）
+      const xOffset = (canvasWidth - info.width) / 2;
       const xPx = xOffset * PT_TO_PX;
       const yPx = yOffset * PT_TO_PX;
       innerSvg += `<g transform="translate(${xPx.toFixed(2)},${yPx.toFixed(2)})">\n${inner}\n</g>\n`;
