@@ -120,6 +120,24 @@ function toIntDivisor(dividend: number, divisor: number): { newDividend: number;
 
 // ─── LaTeX Templates ──────────────────────────────────────────────────────────
 
+/**
+ * ┌─────────────────────────────────────────────────────────────────┐
+ * │                      边距配置说明                                 │
+ * │                                                                  │
+ * │  border={左 下 右 上}  ← standalone 的顺序（逆时针，从左开始）     │
+ * │                                                                  │
+ * │  当前值：border={10pt 2pt 10pt 10pt}                             │
+ * │    左  = 10pt  ← 左边距                                          │
+ * │    下  =  2pt  ← 下边距（调小以减少竖式底部留白）                   │
+ * │    右  = 10pt  ← 右边距                                          │
+ * │    上  = 10pt  ← 上边距                                          │
+ * │                                                                  │
+ * │  字号：12pt（通过 documentclass 选项控制，不影响 xlop 内部排版）    │
+ * │                                                                  │
+ * │  竖式间距：见 mergeSvgs() 函数中的 GAP 常量（当前 2pt）            │
+ * └─────────────────────────────────────────────────────────────────┘
+ */
+
 function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string, extraOpset = ""): string {
   const opsetBase = `decimalsepsymbol={.}${extraOpset ? "," + extraOpset : ""}`;
   return `\\documentclass[border={10pt 2pt 10pt 10pt},12pt]{standalone}
@@ -160,6 +178,7 @@ function latexText(text: string): string {
     .replace(/÷/g, "$\\div$")
     .replace(/×/g, "$\\times$")
     .replace(/……/g, "\\ldots\\ldots");
+  // border 同上，但文字标签不需要指定字号（用 \large 内联控制）
   return `\\documentclass[border={10pt 2pt 10pt 10pt}]{standalone}
 \\usepackage{amsmath}
 \\begin{document}
@@ -228,7 +247,7 @@ function parseSvg(svgPath: string): SvgInfo {
  *   label   → 插入一行文字（先渲染成 SVG）
  */
 function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: string): string {
-  const GAP = 2; // pt，各块间距
+  const GAP = 2; // pt，竖式块之间的间距（含 label 与竖式之间）；调大可增加各竖式间留白
   const LABEL_FONT_SIZE = 14;
   const LABEL_HEIGHT = LABEL_FONT_SIZE + 6;
 
