@@ -72,86 +72,51 @@ function calcIntDiv(dividend: number, divisor: number): { quotient: number; rema
 }
 
 /**
- * 小数除数转整数：移位法
+ * 小数除数转整数：移位法（字符串精确实现，避免浮点误差）
  * 例：6.3 ÷ 0.7 → 63 ÷ 7（两者同乘10）
  * 例：1.44 ÷ 1.2 → 14.4 ÷ 12（×10）
  * 例：3.6 ÷ 0.12 → 360 ÷ 12（×100）
  */
-function toIntDivisor(dividend: number, divisor: number): { newDividend: number; newDivisor: number; shift: number } {
+function toIntDivisor(dividend: number, divisor: number): { newDividend: number; newDivisor: number; newDividendStr: string; newDivisorStr: string; shift: number } {
   const dsorStr = String(divisor);
   const dotIdx = dsorStr.indexOf(".");
-  if (dotIdx === -1) return { newDividend: dividend, newDivisor: divisor, shift: 0 };
-  const shift = dsorStr.length - dotIdx - 1; // 小数位数
-  const factor = Math.pow(10, shift);
-  const newDivisor = Math.round(divisor * factor); // 变为整数
-  const newDividend = dividend * factor;            // 被除数同乘
-  return { newDividend, newDivisor, shift };
+  if (dotIdx === -1) {
+    return { newDividend: dividend, newDivisor: divisor, newDividendStr: String(dividend), newDivisorStr: String(divisor), shift: 0 };
+  }
+  const shift = dsorStr.length - dotIdx - 1; // 除数小数位数
+
+  // 精确移位：用字符串操作移动小数点，避免浮点乘法误差
+  function shiftDecimal(numStr: string, places: number): string {
+    const s = String(numStr);
+    const dot = s.indexOf(".");
+    if (dot === -1) {
+      // 整数，直接补零
+      return s + "0".repeat(places);
+    }
+    const intPart = s.slice(0, dot);
+    const fracPart = s.slice(dot + 1);
+    // 补足小数部分
+    const padded = (fracPart + "0".repeat(places)).slice(0, Math.max(fracPart.length, places));
+    if (places >= fracPart.length) {
+      // 小数点右移超过小数部分，结果是整数
+      const result = intPart + padded;
+      // 去掉前导零（保留至少一位）
+      return result.replace(/^0+(?=\d)/, "") || "0";
+    } else {
+      // 还有小数部分
+      const newInt = intPart + padded.slice(0, places);
+      const newFrac = padded.slice(places);
+      const cleanInt = newInt.replace(/^0+(?=\d)/, "") || "0";
+      return cleanInt + "." + newFrac;
+    }
+  }
+
+  const newDivisorStr = shiftDecimal(dsorStr, shift);
+  const newDividendStr = shiftDecimal(String(dividend), shift);
+  const newDivisor = parseFloat(newDivisorStr);
+  const newDividend = parseFloat(newDividendStr);
+  return { newDividend, newDivisor, newDividendStr, newDivisorStr, shift };
 }
-
-
-// ─── Manual Long Division LaTeX ───────────────────────────────────────────────
-
-interface DivStep { brought: number; q: number; mul: number; rem: number; }
-
-/**
- * 手动模拟长除法并生成 LaTeX 竖式（完全不依赖 longdivision 宏包）
- * 精确控制计算到 places 位小数后截断。
- */
-function buildManualDivLatex(origDividend: number, origDivisor: number, places: number): { latex: string; quotientDisplay: string; quotientApprox: string } {
-  const dsorStr = String(origDivisor);
-  const dotIdx = dsorStr.indexOf(".");
-  const shift = dotIdx === -1 ? 0 : dsorStr.length - dotIdx - 1;
-  const factor = Math.pow(10, shift);
-  const divisor = Math.round(origDivisor * factor);
-  const dendInt = Math.round(origDividend * factor);
-  const dendStr = String(dendInt);
-  const digits = dendStr.split("");
-  const allDigits = [...digits, ...Array(places + 2).fill("0")];
-  const steps: DivStep[] = [];
-  let remainder = 0;
-  for (const d of allDigits) {
-    const current = remainder * 10 + parseInt(d, 10);
-    const q = Math.floor(current / divisor);
-    const mul = q * divisor;
-    const rem = current - mul;
-    steps.push({ brought: current, q, mul, rem });
-    remainder = rem;
-  }
-  const qIntDigits = steps.slice(0, digits.length).map(s => String(s.q));
-  const qFracDigits = steps.slice(digits.length, digits.length + places + 1).map(s => String(s.q));
-  const qIntStr = qIntDigits.join("").replace(/^0+/, "") || "0";
-  const quotientDisplay = qIntStr + "." + qFracDigits.join("");
-  const quotientApprox = calcDivRound(dendInt, divisor, places);
-  let firstValid = 0;
-  for (let i = 0; i < steps.length; i++) {
-    if (steps[i].q > 0) { firstValid = i; break; }
-  }
-  const showSteps = steps.slice(firstValid, digits.length + places + 1);
-  const qTex = quotientDisplay.replace(".", "{.}");
-  const BS = String.fromCharCode(92);
-  const NL = String.fromCharCode(10);
-  let rows = "";
-  for (const s of showSteps) {
-    rows += "  & " + s.brought + " " + BS + BS + NL;
-    rows += "  & " + BS + "underline{" + s.mul + "} " + BS + BS + NL;
-  }
-  rows += "  & " + showSteps[showSteps.length - 1].rem + " " + BS + BS + NL;
-  const qOverline = BS + "makebox[0pt][r]{$" + BS + "overline{" + BS + "smash{" + qTex + "}}$}";
-  const latex = BS + "documentclass[border=10pt]{standalone}" + NL
-    + BS + "usepackage{array}" + NL
-    + BS + "usepackage{amsmath}" + NL
-    + BS + "begin{document}" + NL
-    + BS + "setlength{" + BS + "tabcolsep}{2pt}" + NL
-    + BS + "renewcommand{" + BS + "arraystretch}{1.2}" + NL
-    + BS + "begin{tabular}[t]{r@{}r}" + NL
-    + "  & " + qOverline + BS + BS + "[-2pt]" + NL
-    + "  $" + divisor + BS + ",)$ & $" + BS + "overline{" + dendInt + "}$" + BS + BS + NL
-    + rows
-    + BS + "end{tabular}" + NL
-    + BS + "end{document}" + NL;
-  return { latex, quotientDisplay, quotientApprox };
-}
-
 
 // ─── LaTeX Templates ──────────────────────────────────────────────────────────
 
@@ -161,21 +126,18 @@ function latexXlop(cmd: "opadd" | "opsub" | "opmul", a: string, b: string, extra
 \\usepackage{xlop}
 \\opset{${opsetBase}}
 \\begin{document}
-\\${cmd}{${a}}{${b}}
+{\\large\\${cmd}{${a}}{${b}}}
 \\end{document}
 `;
 }
 
-function latexDivision(dividend: string, divisor: string, maxExtraDigits?: number): string {
-  // maxExtraDigits 控制小数点后最多展示多少位（places+1），使用 max extra digits 而非 stage
-  // max extra digits 是从小数点后开始计数，更直观可靠
-  const extraPart = maxExtraDigits !== undefined ? `,max extra digits=${maxExtraDigits}` : "";
-  const keys = `separators in work=false${extraPart}`;
+function latexDivision(dividend: string, divisor: string): string {
+  const keys = `separators in work=false`;
   return `\\documentclass[border=10pt]{standalone}
 \\usepackage{longdivision}
 \\longdivisionkeys{${keys}}
 \\begin{document}
-\\longdivision{${dividend}}{${divisor}}
+{\\large\\longdivision{${dividend}}{${divisor}}}
 \\end{document}
 `;
 }
@@ -185,7 +147,7 @@ function latexIntDivision(dividend: string, divisor: string): string {
 \\usepackage{longdivision}
 \\longdivisionkeys{separators in work=false}
 \\begin{document}
-\\intlongdivision{${dividend}}{${divisor}}
+{\\large\\intlongdivision{${dividend}}{${divisor}}}
 \\end{document}
 `;
 }
@@ -280,14 +242,9 @@ function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: s
     }
   }
 
-  // 计算总尺寸：取竖式宽度和首行文字估算宽度的最大值
+  // 计算总尺寸：仅以竖式 SVG 宽度为准，不用 label 文字估算来撑宽
   const svgWidths = blocks.filter(b => b.type === "svg").map(b => (b as any).info.width as number);
-  const labelWidths = blocks.filter(b => b.type === "label").map(b => {
-    // 每个字符约 8pt 估算
-    return (b as any).text.length * 8;
-  });
-  const allWidths = [...svgWidths, ...labelWidths];
-  const maxWidth = allWidths.length > 0 ? Math.max(...allWidths) : 200;
+  const maxWidth = svgWidths.length > 0 ? Math.max(...svgWidths) : 200;
 
   let totalHeight = 0;
   for (const b of blocks) {
@@ -309,7 +266,7 @@ function mergeSvgs(items: Array<{ svgPath?: string; label?: string }>, tmpDir: s
     if (b.type === "label") {
       const yText = (yOffset + LABEL_HEIGHT * 0.75) * PT_TO_PX;
       innerSvg += `<text x="0" y="${yText.toFixed(2)}" font-family="serif" font-size="${LABEL_FONT_SIZE}" fill="black">${escapeXml(b.text)}</text>\n`;
-      yOffset += LABEL_HEIGHT + 2; // label 后间距缩小，紧凑排版
+      yOffset += LABEL_HEIGHT + GAP;
     } else {
       const info = (b as any).info as SvgInfo;
       // 提取 SVG 内部内容（去掉外层 svg 标签，保留 defs + 内容），并给 id 加唯一前缀防止冲突
@@ -366,11 +323,20 @@ function escapeXml(s: string): string {
 
 // ─── GitHub Upload ────────────────────────────────────────────────────────────
 
-async function ghPut(path: string, payload: string): Promise<any> {
+async function uploadToGitHub(svgPath: string): Promise<string> {
+  if (!GITHUB_TOKEN) throw new Error("GITHUB_TOKEN not set");
+  const filename = `vcalc_${Date.now()}.svg`;
+  const content  = fs.readFileSync(svgPath).toString("base64");
+  const payload  = JSON.stringify({
+    message: `upload ${filename}`,
+    content,
+    branch: "main",
+  });
+
   return new Promise((resolve, reject) => {
     const req = https.request({
       hostname: "api.github.com",
-      path,
+      path: `/repos/${REPO_OWNER}/${REPO_NAME}/contents/images/${filename}`,
       method: "PUT",
       headers: {
         "Authorization": `Bearer ${GITHUB_TOKEN}`,
@@ -384,68 +350,18 @@ async function ghPut(path: string, payload: string): Promise<any> {
       let data = "";
       res.on("data", c => data += c);
       res.on("end", () => {
-        try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
-        catch (e) { reject(new Error(`Parse error: ${data.slice(0, 200)}`)); }
+        try {
+          const url = JSON.parse(data)?.content?.download_url;
+          url ? resolve(url) : reject(new Error(`Upload failed (${res.statusCode}): ${data.slice(0, 200)}`));
+        } catch (e) {
+          reject(new Error(`Parse error: ${data.slice(0, 200)}`));
+        }
       });
     });
     req.on("error", reject);
     req.write(payload);
     req.end();
   });
-}
-
-async function ghGet(path: string): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const req = https.request({
-      hostname: "api.github.com",
-      path,
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${GITHUB_TOKEN}`,
-        "Accept": "application/vnd.github+json",
-        "User-Agent": "vertical-calc-mcp/5.0",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    }, (res) => {
-      let data = "";
-      res.on("data", c => data += c);
-      res.on("end", () => {
-        try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
-        catch (e) { reject(new Error(`Parse error: ${data.slice(0, 200)}`)); }
-      });
-    });
-    req.on("error", reject);
-    req.end();
-  });
-}
-
-async function uploadToGitHub(svgPath: string): Promise<string> {
-  if (!GITHUB_TOKEN) throw new Error("GITHUB_TOKEN not set");
-  const filename = `vcalc_${Date.now()}.svg`;
-  const content  = fs.readFileSync(svgPath).toString("base64");
-  const apiPath  = `/repos/${REPO_OWNER}/${REPO_NAME}/contents/images/${filename}`;
-
-  for (let attempt = 0; attempt < 3; attempt++) {
-    // 409 时先获取当前 SHA 再重试；首次不需要 SHA（新文件）
-    let sha: string | undefined;
-    if (attempt > 0) {
-      const getRes = await ghGet(apiPath);
-      sha = getRes.body?.sha;
-      await new Promise(r => setTimeout(r, 500 * attempt));
-    }
-    const bodyObj: any = { message: `upload ${filename}`, content, branch: "main" };
-    if (sha) bodyObj.sha = sha;
-    const payload = JSON.stringify(bodyObj);
-    const res = await ghPut(apiPath, payload);
-    if (res.status === 200 || res.status === 201) {
-      const url = res.body?.content?.download_url;
-      if (url) return url;
-      throw new Error(`Upload ok but no download_url: ${JSON.stringify(res.body).slice(0, 200)}`);
-    }
-    if (res.status === 409) continue; // retry with sha
-    throw new Error(`Upload failed (${res.status}): ${JSON.stringify(res.body).slice(0, 200)}`);
-  }
-  throw new Error(`Upload failed after 3 attempts`);
 }
 
 // ─── Core Render & Merge ──────────────────────────────────────────────────────
@@ -540,28 +456,16 @@ const TOOLS = [
   },
   {
     name: "render_division",
-    description: "渲染小数除法竖式，返回SVG图片HTML。支持验算。如需保留特定小数位数，请使用 render_division_decimal。",
+    description: "渲染小数除法竖式，返回SVG图片HTML。支持验算和保留小数位数。",
     inputSchema: {
       type: "object",
       properties: {
         dividend:      { type: "number", description: "被除数" },
         divisor:       { type: "number", description: "除数（不能为0，支持小数，小数除数将自动转为整数除法）" },
+        decimalPlaces: { type: "integer", description: "可选，保留小数位数，计算到该位数+1位后截断" },
         verify:        { type: "boolean", description: "可选，true 则附加验算过程" },
       },
       required: ["dividend", "divisor"],
-    },
-  },
-  {
-    name: "render_division_decimal",
-    description: "渲染保留指定小数位数的除法竖式（精确截断到指定位数）。当需要保留特定小数位数时使用此工具。支持小数除数。",
-    inputSchema: {
-      type: "object",
-      properties: {
-        dividend:      { type: "number", description: "被除数" },
-        divisor:       { type: "number", description: "除数（不能为0，支持小数）" },
-        decimalPlaces: { type: "integer", description: "保留小数位数" },
-      },
-      required: ["dividend", "divisor", "decimalPlaces"],
     },
   },
   {
@@ -590,8 +494,8 @@ function setupHandlers(srv: Server) {
     switch (name) {
 
       case "render_addition": {
-        const a1 = Number(args.addend1);
-        const a2 = Number(args.addend2);
+        const a1 = args.addend1 as number;
+        const a2 = args.addend2 as number;
         const result = calcAdd(a1, a2);
         const header = `${a1} + ${a2} = ${result}`;
         const items: RenderItem[] = [
@@ -608,8 +512,8 @@ function setupHandlers(srv: Server) {
       }
 
       case "render_subtraction": {
-        const m = Number(args.minuend);
-        const s = Number(args.subtrahend);
+        const m = args.minuend as number;
+        const s = args.subtrahend as number;
         const result = calcSub(m, s);
         const header = `${m} - ${s} = ${result}`;
         const items: RenderItem[] = [
@@ -626,19 +530,20 @@ function setupHandlers(srv: Server) {
       }
 
       case "render_multiplication": {
-        const mc = Number(args.multiplicand);
-        const mr = Number(args.multiplier);
+        const mc = args.multiplicand as number;
+        const mr = args.multiplier as number;
         const result = calcMul(mc, mr);
         const header = `${mc} × ${mr} = ${result}`;
         const items: RenderItem[] = [
           { latex: latexXlop("opmul", String(mc), String(mr), "voperator=bottom") },
         ];
         if (verify) {
-          // 验算：result ÷ mr = mc（小数除数需转整数）
-          const { newDividend: vDend, newDivisor: vDsor } = toIntDivisor(Number(result), mr);
+          // 验算：result ÷ mr = mc
+          // 用精确移位法，避免浮点误差（如 63414.4 ÷ 46.4 → 634144 ÷ 464）
+          const { newDividendStr, newDivisorStr } = toIntDivisor(parseFloat(result), mr);
           items.push({
             label: "验算：",
-            latex: latexDivision(String(vDend), String(vDsor)),
+            latex: latexDivision(newDividendStr, newDivisorStr),
           });
         }
         return renderAndMerge({ headerText: header, items }, `${mc}×${mr}`);
@@ -646,48 +551,56 @@ function setupHandlers(srv: Server) {
 
       case "render_division": {
         if (args.divisor === 0) return { content: [{ type: "text", text: "❌ 除数不能为 0" }] };
-        const dend = Number(args.dividend);
-        const dsor = Number(args.divisor);
+        const dend = args.dividend as number;
+        const dsor = args.divisor as number;
+        const places = args.decimalPlaces as number | undefined;
 
-        // 小数除数转整数：移位法
-        const { newDividend, newDivisor } = toIntDivisor(dend, dsor);
-        const result = (Number(newDividend) / Number(newDivisor));
-        const d = decimalLen(result) || 2;
-        const header = `${dend} ÷ ${dsor} = ${result.toFixed(d)}`;
+        // 小数除数转整数：移位法（精确字符串实现）
+        const { newDividend, newDivisor, newDividendStr, newDivisorStr } = toIntDivisor(dend, dsor);
+
+        let header: string;
+
+        if (places !== undefined) {
+          // 保留 places 位，计算到 places+1 位截断
+          const roundResult = calcDivRound(newDividend, newDivisor, places);
+          header = `${dend} ÷ ${dsor} ≈ ${roundResult}`;
+          // 将被除数格式化为 places+1 位小数传给 LaTeX，使 longdivision 自然在该位停止
+          const dendForLatex = parseFloat(newDividendStr).toFixed(places + 1);
+          const items2: RenderItem[] = [
+            { latex: latexDivision(dendForLatex, newDivisorStr) },
+          ];
+          if (verify) {
+            const quotient = calcDivTrunc(newDividend, newDivisor, places);
+            items2.push({
+              label: "验算：",
+              latex: latexXlop("opmul", quotient, newDivisorStr, "voperator=bottom"),
+            });
+          }
+          return renderAndMerge({ headerText: header, items: items2 }, `${dend}÷${dsor}`);
+        } else {
+          const result = (Number(newDividend) / Number(newDivisor));
+          const d = decimalLen(result) || 2;
+          header = `${dend} ÷ ${dsor} = ${result.toFixed(d)}`;
+        }
 
         const items: RenderItem[] = [
-          { latex: latexDivision(String(newDividend), String(newDivisor)) },
+          { latex: latexDivision(newDividendStr, newDivisorStr) },
         ];
         if (verify) {
+          // 验算：商 × 除数 = 被除数
           const quotient = (Number(newDividend) / Number(newDivisor)).toFixed(2);
           items.push({
             label: "验算：",
-            latex: latexXlop("opmul", quotient, String(newDivisor), "voperator=bottom"),
+            latex: latexXlop("opmul", quotient, newDivisorStr, "voperator=bottom"),
           });
         }
         return renderAndMerge({ headerText: header, items }, `${dend}÷${dsor}`);
       }
 
-      case "render_division_decimal": {
-        if (args.divisor === 0) return { content: [{ type: "text", text: "❌ 除数不能为 0" }] };
-        const ddend = Number(args.dividend);
-        const ddsor = Number(args.divisor);
-        const dplaces = Number(args.decimalPlaces);
-        // 小数除数转整数（如 6.3÷0.7 → 63÷7）
-        const { newDividend: dNewDend, newDivisor: dNewDsor } = toIntDivisor(ddend, ddsor);
-        const dRoundResult = calcDivRound(dNewDend, dNewDsor, dplaces);
-        const dheader = `${ddend} ÷ ${ddsor} ≈ ${dRoundResult}`;
-        // 用 longdivision + max extra digits=places+1，被除数传整数，让宏自动处理对齐
-        const ditems: RenderItem[] = [
-          { latex: latexDivision(String(dNewDend), String(dNewDsor), dplaces + 1) },
-        ];
-        return renderAndMerge({ headerText: dheader, items: ditems }, `${ddend}÷${ddsor}(decimal)`);
-      }
-
       case "render_integer_division": {
         if (args.divisor === 0) return { content: [{ type: "text", text: "❌ 除数不能为 0" }] };
-        const dend = Number(args.dividend);
-        const dsor = Number(args.divisor);
+        const dend = args.dividend as number;
+        const dsor = args.divisor as number;
         const { quotient, remainder } = calcIntDiv(dend, dsor);
         const header = remainder === 0
           ? `${dend} ÷ ${dsor} = ${quotient}`
